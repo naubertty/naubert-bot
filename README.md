@@ -161,6 +161,7 @@ sem depender do aparelho.
 | `Nenhum aparelho respondeu` | PC e aparelho em redes/VLANs diferentes, Wi-Fi de convidados com isolamento, ou firewall bloqueando UDP. Teste `ping <ip>` e use `scan --target <ip>`. |
 | `Sem resposta` no `status` | A chave mudou (o app Gree+ foi usado para reparear) ou outro celular assumiu o controle. Rode `bind` de novo. |
 | `bind` funciona, mas comandos não | Alguns modelos usam a geração **v2**; force com `--protocol v2`. |
+| A busca acha, mas "Conectar" falha | Firmwares novos (ex.: **V3.4.M**) só aceitam o pareamento na mesma sessão UDP do scan. Atualize o projeto (baixe o ZIP de novo) — o fluxo já faz scan + bind no mesmo socket. |
 | Interface web abre, mas não conecta | O servidor precisa estar no mesmo PC/rede que alcança o aparelho; verifique o IP salvo em `greeplus.json`. |
 | Porta 7000 ocupada | Feche outros servidores locais (Home Assistant, emulador) ou use `--port` para o emulador. |
 | Windows bloqueia a busca | Libere o Python no firewall do Windows (Redes privadas), ou conecte por IP. |

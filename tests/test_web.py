@@ -118,3 +118,30 @@ def test_unknown_route(server):
     base, _, _ = server
     status, payload = request(base, "/api/nada")
     assert status == 404
+
+
+def test_connect_with_scanned_device_uses_single_session(tmp_path):
+    """Reproduz o caso real: aparelho que só aceita bind após scan na mesma porta."""
+    from greeplus.emulator import GreeEmulator
+    from tests.conftest import free_udp_port
+
+    emu = GreeEmulator(host="127.0.0.1", port=free_udp_port(), require_scan=True).start()
+    session = DeviceSession(config_file=str(tmp_path / "client.json"))
+    httpd = GreeHTTPServer(("127.0.0.1", 0), make_handler(session))
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{httpd.server_address[1]}"
+    try:
+        status, payload = request(
+            base,
+            "/api/connect",
+            "POST",
+            {"ip": "127.0.0.1", "port": emu.port, "mac": emu.mac, "protocol": emu.protocol},
+        )
+        assert status == 200, payload
+        assert payload["connected"] is True
+        assert payload["state"]["target"] == 24
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        emu.stop()

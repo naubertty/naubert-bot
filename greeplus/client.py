@@ -303,41 +303,57 @@ class GreeClient:
     # -- public API ------------------------------------------------------
 
     def discover(self, timeout: Optional[float] = None) -> DeviceInfo:
-        info = discover(self.info.ip, timeout=timeout or max(self.timeout, 3.0), port=self.info.port)
+        """Descobre o aparelho em `ip` (unicast) ou, se ele ignorar unicast,
+        procura no broadcast e casa pelo IP/MAC."""
+        wait = timeout or max(self.timeout, 3.0)
+        info = discover(self.info.ip, timeout=wait, port=self.info.port)
+        if info is None:
+            # Vários firmwares (ex.: V3.4.M) só respondem ao scan em broadcast.
+            for candidate in scan(None, timeout=wait, port=self.info.port):
+                if candidate.ip == self.info.ip or (self.info.mac and candidate.mac == self.info.mac):
+                    info = candidate
+                    break
         if info is None:
             raise GreeTimeout(f"nenhum aparelho Gree respondeu em {self.info.ip}")
+        self._absorb(info)
+        return info
+
+    def _absorb(self, info: DeviceInfo) -> None:
         self.info.mac = self.info.mac or info.mac
         self.info.name = info.name or self.info.name
         self.info.model = info.model or self.info.model
         self.info.version = info.version or self.info.version
         self.info.mid = info.mid or self.info.mid
-        if not self.protocol:
+        if info.protocol in ("v1", "v2"):
+            self.protocol = info.protocol
             self.info.protocol = info.protocol
-        return info
 
     def bind(self, mac: Optional[str] = None, protocol: Optional[str] = None) -> str:
-        """Ask the unit for its session key (the app calls this "pairing")."""
+        """Pareia com o aparelho e devolve a chave local dele.
+
+        O bind roda em **uma única sessão UDP**, precedido de um scan enviado
+        pelo mesmo socket: firmwares recentes (ex.: V3.4.M) ignoram o bind que
+        chega de outra porta e podem ignorar o scan em unicast.
+        """
         if mac:
             self.info.mac = canonical_mac(mac)
         if protocol in ("v1", "v2"):
             self.protocol = protocol
         if not self.info.mac:
             info = self.discover()
-            self.info.mac = info.mac
-            self.protocol = self.protocol or info.protocol
+            self._absorb(info)
         if not self.info.mac:
             raise BindError("não foi possível descobrir o MAC do aparelho")
 
-        candidates = [self.protocol] if self.protocol else ["v1", "v2"]
-        payload, version = self._exchange(
-            lambda: {"mac": self.info.mac, "t": "bind", "uid": 0},
-            expected={"bindok"},
-            index=1,
-            versions=candidates,
-            timeout=self.probe_timeout if len(candidates) > 1 else self.timeout,
-            retries=2,
-            use_device_key=False,
-        )
+        sock = _open_socket(2.0)
+        try:
+            self._prime_session(sock)
+            if not self.info.mac:
+                raise BindError("o aparelho não informou o MAC durante a descoberta")
+            payload, version = self._bind_on_socket(sock)
+        finally:
+            sock.close()
+
         key = payload.get("key")
         result = payload.get("r")
         if result not in (None, 200):
@@ -356,6 +372,87 @@ class GreeClient:
         self._bound = True
         _LOGGER.info("bound to %s with %s key", self.info.mac, version)
         return raw_key.decode("ascii", "replace")
+
+    def _prime_session(self, sock: socket.socket) -> None:
+        """Envia um scan pelo mesmo socket e aproveita a resposta para
+        confirmar MAC e geração do protocolo."""
+        try:
+            sock.sendto(json.dumps(build_scan()).encode(), (self.info.ip, self.info.port))
+            _LOGGER.debug("session prime: scan -> %s:%s", self.info.ip, self.info.port)
+        except OSError as exc:
+            _LOGGER.debug("session prime failed: %s", exc)
+            return
+
+        deadline = time.monotonic() + self.probe_timeout
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return
+            sock.settimeout(remaining)
+            try:
+                reply, address = sock.recvfrom(65535)
+            except socket.timeout:
+                return
+            except OSError:
+                return
+            try:
+                packet = decode_packet(reply, CipherV1(GENERIC_KEY_V1), allow_key=CipherV2(GENERIC_KEY_V2))
+            except Exception:  # noqa: BLE001 - pacotes alheios são esperados
+                continue
+            info = _device_from_packet(packet, address)
+            if info:
+                self._absorb(info)
+                _LOGGER.debug("session prime: %s respondeu (%s)", info.mac, info.protocol)
+                return
+
+    def _bind_on_socket(self, sock: socket.socket) -> Tuple[Dict[str, Any], str]:
+        preferred = self.protocol if self.protocol in ("v1", "v2") else "v1"
+        candidates = [preferred, "v2" if preferred == "v1" else "v1"]
+        last_error: Optional[Exception] = None
+
+        for attempt in range(2):
+            for version in candidates:
+                cipher = make_cipher(version)  # chave genérica, nunca a do aparelho
+                inner = {"mac": self.info.mac, "t": "bind", "uid": 0}
+                envelope = build_envelope(cipher, self.info.mac, inner, index=1)
+                data = json.dumps(envelope).encode()
+                wait = self.probe_timeout + attempt
+                try:
+                    sock.sendto(data, (self.info.ip, self.info.port))
+                except OSError as exc:
+                    last_error = exc
+                    continue
+                _LOGGER.debug("bind (%s) -> %s:%s", version, self.info.ip, self.info.port)
+
+                deadline = time.monotonic() + wait
+                while True:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    sock.settimeout(remaining)
+                    try:
+                        reply, address = sock.recvfrom(65535)
+                    except socket.timeout:
+                        break
+                    except OSError as exc:
+                        last_error = exc
+                        break
+                    try:
+                        packet = decode_packet(
+                            reply, cipher, allow_key=make_cipher("v2" if version == "v1" else "v1")
+                        )
+                    except Exception:  # noqa: BLE001
+                        continue
+                    if packet.kind == "bindok":
+                        _LOGGER.debug("bind ok (%s) de %s", packet.protocol, address[0])
+                        return packet.payload, packet.protocol or version
+                last_error = GreeTimeout(f"bind sem resposta ({version})")
+
+        raise BindError(
+            f"o aparelho {self.info.ip} não aceitou o pareamento. "
+            "Confirme que ele está ligado e conectado ao Wi-Fi, e tente de novo; "
+            "se persistir, use --protocol v2."
+        ) from last_error
 
     def ensure_bound(self) -> None:
         if not self._bound or not self.key:

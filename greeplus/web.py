@@ -100,13 +100,17 @@ class DeviceSession:
 
     def _bind_locked(self) -> None:
         assert self.client is not None
-        info = self.client.discover(timeout=2.5)
-        self.client.info.name = info.name or self.client.info.name
-        self.client.info.model = info.model
-        self.client.info.version = info.version
-        self.client.info.mid = info.mid
-        if not self.client.protocol:
-            self.client.protocol = info.protocol
+        # Se a busca já devolveu MAC e protocolo, não refazemos a descoberta:
+        # o pareamento usa a sessão UDP dele (scan + bind no mesmo socket).
+        if not self.client.info.mac or not self.client.protocol:
+            try:
+                info = self.client.discover(timeout=2.5)
+                self.client.info.name = info.name or self.client.info.name
+                self.client.info.model = info.model or self.client.info.model
+                self.client.info.version = info.version or self.client.info.version
+                self.client.info.mid = info.mid or self.client.info.mid
+            except GreeError as exc:
+                _LOGGER.debug("descoberta prévia falhou: %s", exc)
         key = self.client.bind(mac=self.client.info.mac)
         data = {
             "ip": self.client.info.ip,

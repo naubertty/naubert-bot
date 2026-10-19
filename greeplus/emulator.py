@@ -62,6 +62,7 @@ class GreeEmulator:
         protocol: str = "v1",
         key: str = "TestKey123456789",
         state: Optional[Dict[str, Any]] = None,
+        require_scan: bool = False,
     ) -> None:
         self.host = host
         self.port = port
@@ -75,6 +76,9 @@ class GreeEmulator:
         if state:
             self.state.update(state)
         self.requests = 0
+        # Alguns firmwares só aceitam o bind vindo da mesma porta que fez o scan.
+        self.require_scan = require_scan
+        self._scanned: set = set()
         self._sock: Optional[socket.socket] = None
         self._thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
@@ -161,6 +165,7 @@ class GreeEmulator:
             return None
 
         if obj.get("t") == "scan":
+            self._scanned.add(address)
             return self._seal(self._dev_payload(), self._generic_cipher())
 
         encrypted = obj.get("pack")
@@ -183,6 +188,11 @@ class GreeEmulator:
             return None
 
         kind = str(inner.get("t", "")).lower()
+
+        if kind == "bind" and self.require_scan and address not in self._scanned:
+            _LOGGER.debug("bind de %s ignorado (sem scan na mesma sessão)", address)
+            return None
+
         self.requests += 1
 
         if kind == "bind":
