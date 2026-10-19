@@ -1,0 +1,46 @@
+{
+  "1º Ano": {
+    "Arte": {
+      "bimestre_1": [
+        "Exploração de cores primárias utilizando tinta guache e pincéis - Atividade de pintura livre estimulando criatividade",
+        "Desenho livre com lápis de cor e giz de cera - Representação do autorretrato e identidade"
+      ],
+      "bimestre_2": [
+        "Produção artística utilizando técnicas de pintura e colagem, explorando cores e formas da natureza",
+        "Exploração de diferentes técnicas de modelagem utilizando massa de modelar e argila"
+      ],
+      "bimestre_3": ["Arte africana e indígena - Valorização da diversidade cultural brasileira"],
+      "bimestre_4": ["Preparação para exposição de artes - Seleção e organização dos trabalhos do ano"]
+    },
+    "Ciências": {
+      "bimestre_1": ["Reconhecimento do corpo humano - Partes do corpo e sentidos"],
+      "bimestre_2": ["Água - Importância para a vida, estados físicos e uso consciente"],
+      "bimestre_3": ["Saúde e vacinação - Importância das vacinas"],
+      "bimestre_4": ["Universo - Sol, Lua e estrelas, observação do céu"]
+    },
+    "Educação Física": {
+      "bimestre_1": ["Brincadeiras de roda e cantigas - Socialização e ritmo"],
+      "bimestre_2": ["Circuitos psicomotores com obstáculos - Agilidade"],
+      "bimestre_3": ["Esportes adaptados - Futebol, handebol e basquete com regras simplificadas"],
+      "bimestre_4": ["Gincana escolar - Integração e trabalho em equipe"]
+    },
+    "Ensino Religioso": {
+      "bimestre_1": ["Identidade e história pessoal - Quem sou eu, família e origem"],
+      "bimestre_2": ["Tradições culturais e religiosas do Brasil - Diversidade e respeito"],
+      "bimestre_3": ["Manifestações religiosas locais - Conhecendo tradições do Maranhão"],
+      "bimestre_4": ["Solidariedade e ação social - Campanhas solidárias na escola"]
+    },
+    "Língua Portuguesa": {
+      "bimestre_1": ["Alfabeto e ordem alfabética - Nome das letras, sons iniciais"],
+      "bimestre_2": ["Leitura compartilhada - Livros de literatura infantil com foco em inferência"],
+      "bimestre_3": ["Gênero instrucional - Receita culinária, regras de jogos, convites"],
+      "bimestre_4": ["Leitura fluente e interpretação - Textos diversos com inferência"]
+    },
+    "Matemática": {
+      "bimestre_1": ["Números de 0 a 20 - Contagem, leitura, escrita e comparação"],
+      "bimestre_2": ["Números até 50 - Sequência numérica, antecessor/sucessor"],
+      "bimestre_3": ["Números até 100 - Leitura, escrita por extenso, valor posicional"],
+      "bimestre_4": ["Números até 100 - Comparação, ordenação e sequências"]
+    }
+  }
+}

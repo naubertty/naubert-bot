@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+.env.local
+playwright/.cache/
+playwright-report/
+test-results/
+data/sessions/
+data/logs/
+*.log
+.DS_Store
+frontend/dist/
+backend/dist/
+.Unselected files/

@@ -1,0 +1,7 @@
+COMO RODAR NO WINDOWS - CLIQUE DUPLO:
+1. Extraia ZIP na Area de Trabalho
+2. Clique INSTALAR.bat (1a vez)
+3. Clique INICIAR.bat (todo dia) - abre http://localhost:3000
+4. No painel replica.html faca login com CPF/senha para clonar o site
+5. Use Comandos Diarios para gerar aulas (Hoje/Amanha)
+Se travar: PARAR.bat para fechar servidor antes de excluir pasta

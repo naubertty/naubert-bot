@@ -1,0 +1,28 @@
+[
+  {
+    "id": "demo1",
+    "turma": "1º ANO A MATUTINO - 1º Ano (U I PEDRO LEONARDO)",
+    "disciplina": "Arte",
+    "data": "2026-05-08",
+    "quantidadeAulas": 2,
+    "conteudo": "Exploração de diferentes técnicas de modelagem utilizando massa de modelar e argila",
+    "observacoes": "Aula realizada com participação ativa dos alunos. Materiais disponibilizados e organizados em grupos.",
+    "bimestre": "2º Bimestre",
+    "status": "Validado",
+    "criadoEm": "2026-05-08T10:00:00.000Z",
+    "modo": "simulado"
+  },
+  {
+    "id": "demo2",
+    "turma": "1º ANO A MATUTINO - 1º Ano (U I PEDRO LEONARDO)",
+    "disciplina": "Arte",
+    "data": "2026-04-24",
+    "quantidadeAulas": 2,
+    "conteudo": "Produção artística utilizando técnicas de pintura e colagem, explorando cores e formas da natureza",
+    "observacoes": "Aula realizada com participação ativa dos alunos. Materiais disponibilizados e organizados em grupos.",
+    "bimestre": "2º Bimestre",
+    "status": "Validado",
+    "criadoEm": "2026-04-24T10:00:00.000Z",
+    "modo": "simulado"
+  }
+]

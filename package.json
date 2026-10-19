@@ -1,0 +1,20 @@
+{
+  "name": "naubert-bot",
+  "version": "1.0.0",
+  "description": "Painel automatizado para Diário de Classe - SEMED Lago Verde/MA (EduGestão) - Geração e lançamento automático de aulas",
+  "private": true,
+  "workspaces": ["backend", "frontend"],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace=backend\" \"npm run dev --workspace=frontend\"",
+    "start": "npm run start --workspace=backend",
+    "bot": "node bot/cli.js",
+    "install:all": "npm install && npm install --workspace=backend && npm install --workspace=frontend && npx playwright install chromium",
+    "test": "node --test backend/src/**/*.test.js"
+  },
+  "keywords": ["edugestao", "diario-de-classe", "lago-verde", "automacao", "educação"],
+  "author": "Naubert",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

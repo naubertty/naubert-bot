@@ -1,0 +1,39 @@
+{
+  "ano": 2026,
+  "dias_letivos_total": 200,
+  "bimestres": [
+    { "nome": "1º Bimestre", "inicio": "2026-02-02", "fim": "2026-04-17", "dias_letivos": 52 },
+    { "nome": "2º Bimestre", "inicio": "2026-04-22", "fim": "2026-07-03", "dias_letivos": 53 },
+    { "nome": "3º Bimestre", "inicio": "2026-07-21", "fim": "2026-09-30", "dias_letivos": 48 },
+    { "nome": "4º Bimestre", "inicio": "2026-10-01", "fim": "2026-12-18", "dias_letivos": 47 }
+  ],
+  "feriados_e_recessos": [
+    { "data": "2026-02-16", "nome": "Carnaval - Recesso", "letivo": false },
+    { "data": "2026-02-17", "nome": "Carnaval", "letivo": false },
+    { "data": "2026-04-03", "nome": "Sexta-feira Santa", "letivo": false },
+    { "data": "2026-04-21", "nome": "Tiradentes", "letivo": false },
+    { "data": "2026-05-01", "nome": "Dia do Trabalho", "letivo": false },
+    { "data": "2026-06-04", "nome": "Corpus Christi", "letivo": false },
+    { "data": "2026-09-07", "nome": "Independência do Brasil", "letivo": false },
+    { "data": "2026-10-12", "nome": "Nossa Senhora Aparecida", "letivo": false },
+    { "data": "2026-11-02", "nome": "Finados", "letivo": false },
+    { "data": "2026-11-15", "nome": "Proclamação da República", "letivo": false },
+    { "data": "2026-07-04", "nome": "Recesso Julho Início", "letivo": false, "periodo": "2026-07-04 a 2026-07-20" },
+    { "data": "2026-12-19", "nome": "Recesso Final", "letivo": false, "periodo": "2026-12-19 a 2026-12-31" }
+  ],
+  "fins_de_semana_nao_letivos": true,
+  "dias_letivos_por_mes": {
+    "02": 18,
+    "03": 22,
+    "04": 19,
+    "05": 21,
+    "06": 20,
+    "07": 15,
+    "08": 21,
+    "09": 21,
+    "10": 22,
+    "11": 20,
+    "12": 14
+  },
+  "nota_calculo": "Calculado com base no horário da turma e na matriz curricular, sobre os dias letivos do calendário escolar publicado (LDB 9.394/96 Art. 24). Fonte: SEMED Lago Verde/MA - Diário de Classe."
+}

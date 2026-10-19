@@ -1,0 +1,52 @@
+{
+  "turma": "1º ANO A MATUTINO - 1º Ano (U I PEDRO LEONARDO)",
+  "ano_letivo": 2026,
+  "turno": "Matutino",
+  "disciplinas": [
+    "Arte",
+    "Ciências",
+    "Educação Física",
+    "Ensino Religioso",
+    "Língua Portuguesa",
+    "Matemática"
+  ],
+  "horario_semanal": {
+    "segunda": [
+      { "disciplina": "Língua Portuguesa", "aulas": 3 },
+      { "disciplina": "Matemática", "aulas": 2 },
+      { "disciplina": "Ciências", "aulas": 1 }
+    ],
+    "terca": [
+      { "disciplina": "Língua Portuguesa", "aulas": 3 },
+      { "disciplina": "Matemática", "aulas": 3 },
+      { "disciplina": "Ensino Religioso", "aulas": 1 }
+    ],
+    "quarta": [
+      { "disciplina": "Língua Portuguesa", "aulas": 2 },
+      { "disciplina": "Matemática", "aulas": 2 },
+      { "disciplina": "Ciências", "aulas": 2 },
+      { "disciplina": "Arte", "aulas": 1 }
+    ],
+    "quinta": [
+      { "disciplina": "Língua Portuguesa", "aulas": 2 },
+      { "disciplina": "Matemática", "aulas": 3 },
+      { "disciplina": "Educação Física", "aulas": 1 },
+      { "disciplina": "Arte", "aulas": 1 }
+    ],
+    "sexta": [
+      { "disciplina": "Língua Portuguesa", "aulas": 2 },
+      { "disciplina": "Matemática", "aulas": 2 },
+      { "disciplina": "Educação Física", "aulas": 1 },
+      { "disciplina": "Arte", "aulas": 2 }
+    ]
+  },
+  "observacoes": "Horário baseado na matriz curricular do 1º Ano - SEMED Lago Verde/MA. Ajuste as quantidades conforme seu horário real no menu Configurações > Horário. O sistema calcula automaticamente a meta anual (200 dias letivos) e distribui pelos bimestres.",
+  "metas_anuais_por_disciplina": {
+    "Arte": 78,
+    "Ciências": 70,
+    "Educação Física": 39,
+    "Ensino Religioso": 38,
+    "Língua Portuguesa": 192,
+    "Matemática": 198
+  }
+}
