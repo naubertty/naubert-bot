@@ -92,6 +92,7 @@ python gree.py set pow=on mode=cool temp=22 fan=3 swing=oscilar light=on
 python gree.py watch --interval 5
 python gree.py emulator [--protocol v1|v2] [--port 7000]
 python gree.py diagnose          # relatório de rede + tentativa de bind v1/v2
+python gree.py sniff --seconds 10  # mostra qualquer pacote UDP recebido (sem decifrar)
 ```
 
 Depois do `bind`, o IP, o MAC e a chave ficam salvos em `greeplus.json`, então os demais

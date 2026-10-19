@@ -170,3 +170,29 @@ def test_cli_diagnose(emulator, capsys, tmp_path):
     assert "Diagnóstico greeplus" in out
     assert emulator.mac in out
     assert "bind" in out or "OK" in out
+
+
+def test_cli_sniff_shows_raw_packets(emulator, capsys):
+    code, out = run_cli(
+        capsys, "sniff", "--target", "127.0.0.1", "--port", str(emulator.port), "--seconds", "1.5"
+    )
+    assert code == 0
+    assert "pacote(s) recebido(s)" in out
+    assert "decifrado" in out
+
+
+def test_cli_diagnose_with_ip_hint(emulator, capsys, tmp_path):
+    code, out = run_cli(
+        capsys,
+        "diagnose",
+        "--ip",
+        "127.0.0.1",
+        "--port",
+        str(emulator.port),
+        "--config",
+        str(tmp_path / "cfg.json"),
+        "--timeout",
+        "1.5",
+    )
+    assert code == 0
+    assert "Alcançabilidade (ping)" in out

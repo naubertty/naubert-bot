@@ -169,3 +169,22 @@ def test_prime_updates_stale_ip_from_broadcast_reply(emulator, monkeypatch):
 
     assert client.info.ip == "127.0.0.1"
     assert client.bind() == emulator.key.decode()
+
+
+def test_scan_raw_returns_replies_without_decoding(emulator):
+    from greeplus.client import scan_raw
+
+    replies = scan_raw(["127.0.0.1"], timeout=1.5, port=emulator.port)
+    assert replies
+    address, data = replies[0]
+    assert address[0] == "127.0.0.1"
+    assert data.startswith(b"{")
+
+
+def test_scan_stats_counters(emulator):
+    from greeplus.client import scan
+
+    stats = {}
+    scan(["127.0.0.1"], timeout=1.2, port=emulator.port, stats=stats)
+    assert stats.get("received", 0) >= 1
+    assert stats.get("decoded", 0) >= 1

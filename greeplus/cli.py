@@ -20,6 +20,7 @@ from .client import (
     local_addresses,
     local_ip,
     scan,
+    scan_raw,
     scan_subnet,
     subnet_prefix,
 )
@@ -575,8 +576,9 @@ def cmd_diagnose(args) -> int:
         print()
 
     # 2) broadcast
+    stats: Dict[str, int] = {}
     print("--- Busca (broadcast) ---")
-    devices = scan(None, timeout=args.timeout or 4.0, port=args.port or PORT)
+    devices = scan(None, timeout=args.timeout or 4.0, port=args.port or PORT, stats=stats)
     if devices:
         for device in devices:
             print(f"  {device.name or '?'} | {device.ip}:{device.port} | mac {device.mac} | "
@@ -588,7 +590,7 @@ def cmd_diagnose(args) -> int:
     # 3) varredura unicast (funciona quando o broadcast é bloqueado)
     if not devices:
         print(f"--- Varredura unicast em {subnet_prefix() or '?'}.0/24 ---")
-        devices = scan_subnet(timeout=max(2.0, args.timeout or 4.0), port=args.port or PORT)
+        devices = scan_subnet(timeout=max(2.0, args.timeout or 4.0), port=args.port or PORT, stats=stats)
         if devices:
             for device in devices:
                 print(f"  {device.name or '?'} | {device.ip}:{device.port} | mac {device.mac} | "
@@ -657,6 +659,21 @@ def cmd_diagnose(args) -> int:
         print()
 
     if not devices:
+        received = stats.get("received", 0)
+        decoded = stats.get("decoded", 0)
+        print("--- Pacotes recebidos ---")
+        print(f"  datagramas recebidos: {received} (decifrados: {decoded})")
+        if received == 0:
+            print("  Nenhum pacote chegou ao PC. As causas prováveis são, em ordem:")
+            print("    a) o aparelho saiu da rede (Wi-Fi dele caiu ou está sem energia);")
+            print("    b) o Windows/firewall está descartando as respostas UDP;")
+            print("    c) o roteador isola os clientes (isolamento de AP/rede de visitantes).")
+        elif decoded == 0:
+            print("  Chegaram pacotes, mas nenhum no protocolo Gree conhecido.")
+            print("  Pode ser outro dispositivo na porta 7000 — veja com: gree.py sniff")
+        print()
+
+    if not devices:
         print("--- Nada encontrado: o que verificar ---")
         print("  1. O PC e o ar-condicionado estão no MESMO Wi-Fi/roteador?")
         print("     (não use rede de visitantes; evite VPN no PC)")
@@ -668,6 +685,39 @@ def cmd_diagnose(args) -> int:
         print()
 
     print("=== Fim do diagnóstico ===")
+    return 0
+
+
+def cmd_sniff(args) -> int:
+    """Mostra qualquer datagrama recebido na porta do aparelho (sem decifrar)."""
+    targets = args.target or None
+    port = args.port or PORT
+    seconds = max(2.0, args.seconds)
+
+    print(Style.bold("Escutando UDP na porta %d por %.0f segundos..." % (port, seconds)))
+    print(Style.dim(f"Destinos: {', '.join(targets) if targets else ', '.join(broadcast_targets())}"))
+    print(Style.dim("Se nada aparecer abaixo, nenhum pacote chegou ao PC (rede/firewall).\n"))
+
+    replies = scan_raw(targets, timeout=seconds, port=port, repeats=max(2, int(seconds // 2)))
+    if not replies:
+        print(Style.yellow("Nenhum pacote recebido."))
+        print(Style.dim("Nesse caso o problema não é o protocolo: o aparelho não está\n"
+                        "respondendo ou o Windows está descartando as respostas."))
+        return 1
+
+    print(Style.green(f"{len(replies)} pacote(s) recebido(s):"))
+    for address, data in replies:
+        preview = data[:60].decode("utf-8", "replace").replace("\n", " ")
+        print(f"  {address[0]}:{address[1]}  {len(data):>5} bytes  {preview}")
+        try:
+            from .crypto import GENERIC_KEY_V1, GENERIC_KEY_V2, CipherV1, CipherV2
+            from .packets import decode_packet
+
+            packet = decode_packet(data, CipherV1(GENERIC_KEY_V1), allow_key=CipherV2(GENERIC_KEY_V2))
+            name = packet.payload.get("name") or packet.payload.get("mac")
+            print(f"      -> decifrado ({packet.protocol}): tipo {packet.kind} {name or ''}")
+        except Exception:  # noqa: BLE001
+            print("      -> não decifra com as chaves genéricas (pode ser outro aparelho)")
     return 0
 
 
@@ -797,6 +847,12 @@ def build_parser() -> argparse.ArgumentParser:
     decode_p.add_argument("--protocol", choices=["v1", "v2"], help="força a geração do protocolo")
     decode_p.add_argument("--json", action="store_true", help="saída em JSON")
     decode_p.set_defaults(func=cmd_decode)
+
+    sniff_p = sub.add_parser("sniff", help="mostra qualquer pacote UDP recebido (sem decifrar)")
+    sniff_p.add_argument("--target", action="append", help="IP/broadcast para onde enviar o scan")
+    sniff_p.add_argument("--port", type=int, default=None, help="porta UDP (padrão 7000)")
+    sniff_p.add_argument("--seconds", type=float, default=10.0, help="por quantos segundos escutar")
+    sniff_p.set_defaults(func=cmd_sniff)
 
     diag_p = sub.add_parser("diagnose", help="testa a rede e gera um relatório para suporte")
     diag_p.add_argument("--target", action="append", help="IP ou broadcast específico (pode repetir)")

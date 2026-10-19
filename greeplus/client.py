@@ -175,6 +175,7 @@ def scan(
     port: int = PORT,
     sweep: bool = False,
     sweep_timeout: float = 2.0,
+    stats: Optional[Dict[str, int]] = None,
 ) -> List[DeviceInfo]:
     """Discover units on the LAN.
 
@@ -186,6 +187,7 @@ def scan(
         sweep: When the broadcast finds nothing, probe every host of the local
             /24 with unicast (some routers drop broadcast between Wi-Fi/LAN).
         sweep_timeout: How long the unicast sweep listens for answers.
+        stats: Optional counter dict updated with received/decoded packet counts.
     """
     destinations = list(targets) if targets else broadcast_targets()
     deadline = time.monotonic() + timeout
@@ -213,11 +215,15 @@ def scan(
             except OSError as exc:
                 _LOGGER.debug("scan receive failed: %s", exc)
                 break
+            if stats is not None:
+                stats["received"] = stats.get("received", 0) + 1
             try:
                 packet = decode_packet(data, CipherV1(GENERIC_KEY_V1), allow_key=CipherV2(GENERIC_KEY_V2))
             except Exception as exc:  # noqa: BLE001 - stray traffic is expected
                 _LOGGER.debug("ignoring undecodable scan reply from %s: %s", address, exc)
                 continue
+            if stats is not None:
+                stats["decoded"] = stats.get("decoded", 0) + 1
             info = _device_from_packet(packet, address)
             if info and info.mac not in found:
                 found[info.mac] = info
@@ -237,6 +243,7 @@ def scan_subnet(
     timeout: float = 2.0,
     port: int = PORT,
     local: Optional[str] = None,
+    stats: Optional[Dict[str, int]] = None,
 ) -> List[DeviceInfo]:
     """Varre a rede /24 em unicast (1..254) à procura de aparelhos.
 
@@ -286,11 +293,15 @@ def scan_subnet(
                 data, address = sock.recvfrom(65535)
             except (BlockingIOError, OSError):
                 continue
+            if stats is not None:
+                stats["received"] = stats.get("received", 0) + 1
             try:
                 packet = decode_packet(data, CipherV1(GENERIC_KEY_V1), allow_key=CipherV2(GENERIC_KEY_V2))
             except Exception as exc:  # noqa: BLE001
                 _LOGGER.debug("sweep: resposta ilegível de %s: %s", address, exc)
                 continue
+            if stats is not None:
+                stats["decoded"] = stats.get("decoded", 0) + 1
             info = _device_from_packet(packet, address)
             if info and info.mac not in found:
                 found[info.mac] = info
@@ -299,6 +310,59 @@ def scan_subnet(
         sock.close()
 
     return list(found.values())
+
+
+def scan_raw(
+    targets: Optional[Sequence[str]] = None,
+    timeout: float = 3.0,
+    port: int = PORT,
+    repeats: int = 3,
+) -> List[Tuple[Tuple[str, int], bytes]]:
+    """Envia scans e devolve **todo** datagrama recebido, sem tentar decifrar.
+
+    Serve para separar "o aparelho não está na rede" de "as respostas estão
+    sendo bloqueadas/ignoradas": se nada chega aqui, o problema é de rede ou
+    firewall, não do protocolo.
+    """
+    destinations = list(targets) if targets else broadcast_targets()
+    request = json.dumps(build_scan()).encode()
+    replies: List[Tuple[Tuple[str, int], bytes]] = []
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        sock.bind(("", 0))
+    except OSError:
+        pass
+    try:
+        deadline = time.monotonic() + timeout
+        interval = max(0.4, timeout / (repeats + 1))
+        next_send = 0.0
+        sent = 0
+        while time.monotonic() < deadline:
+            now = time.monotonic()
+            if sent < repeats and now >= next_send:
+                for destination in destinations:
+                    try:
+                        sock.sendto(request, (destination, port))
+                    except OSError as exc:
+                        _LOGGER.debug("scan_raw para %s falhou: %s", destination, exc)
+                sent += 1
+                next_send = now + interval
+            sock.settimeout(0.2)
+            try:
+                data, address = sock.recvfrom(65535)
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            replies.append((address, data))
+            if len(replies) >= 50:
+                break
+        return replies
+    finally:
+        sock.close()
 
 
 def discover(ip: str, timeout: float = 3.0, attempts: int = 2, port: int = PORT) -> Optional[DeviceInfo]:
