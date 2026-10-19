@@ -552,7 +552,8 @@ def cmd_diagnose(args) -> int:
 
     print("--- Pareamento (bind) por geração ---")
     for device in devices:
-        for version in ("v1", "v2"):
+        versions = [device.protocol] if device.protocol in ("v1", "v2") else ["v1", "v2"]
+        for version in versions:
             client = GreeClient(
                 device.ip,
                 port=device.port,
@@ -567,7 +568,9 @@ def cmd_diagnose(args) -> int:
             except GreeError as exc:
                 print(f"  {device.ip} / {version}: {exc}")
                 continue
-            print(f"  {device.ip} / {version}: OK (chave {mask_key(key)})")
+            used = client.protocol or version
+            note = "" if used == version else f" (negociado como {used})"
+            print(f"  {device.ip} / {version}: OK{note} (chave {mask_key(key)})")
             try:
                 raw = client.status()
                 interesting = {k: raw[k] for k in ("Pow", "Mod", "SetTem", "TemSen", "TemUn", "hid") if k in raw}
