@@ -523,7 +523,7 @@
       const list = $("deviceList");
       list.innerHTML = "";
       if (!data.devices || !data.devices.length) {
-        $("connectHint").textContent = "Nenhum aparelho respondeu. Confira se o PC está no mesmo Wi-Fi e tente conectar por IP.";
+        $("connectHint").textContent = "Nenhum aparelho respondeu (busca no broadcast e varredura da rede). Confira se o PC está no mesmo Wi-Fi, feche o app GREE+ no celular e tente o IP manual.";
         return;
       }
       $("connectHint").textContent = data.devices.length + " aparelho(s) encontrado(s).";

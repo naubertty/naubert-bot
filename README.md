@@ -24,7 +24,8 @@ dependências externas.
 |---|---|
 | `INICIAR-DEMO.bat` | testa a interface com um aparelho **simulado** (não precisa de ar-condicionado) |
 | `INICIAR-AR-CONDICIONADO.bat` | procura o aparelho na rede, pareia e abre o controle |
-| `DIAGNOSTICO.bat` | se algo falhar: testa tudo e gera `diagnostico.txt` para enviar a quem ajuda |
+| `DIAGNOSTICO.bat` | se algo falhar: testa a rede, o ping, o broadcast, varre a rede e gera `diagnostico.txt` |
+| `LIBERAR-FIREWALL.bat` | libera a porta UDP 7000 no firewall do Windows (pede permissão de administrador) |
 
 > Não digite comandos dentro de `C:\Windows\System32`. Os arquivos `.bat` já abrem na
 > pasta certa. Se o Windows mostrar “O Windows protegeu o computador”, clique em

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import select
 import socket
 import time
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -81,6 +82,55 @@ def broadcast_targets() -> List[str]:
     return targets
 
 
+def local_addresses() -> List[str]:
+    """IPv4 addresses of this machine (best effort, sem dependências)."""
+    addresses: List[str] = []
+    address = local_ip()
+    if address:
+        addresses.append(address)
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            candidate = info[4][0]
+            if candidate not in addresses and not candidate.startswith("169.254."):
+                addresses.append(candidate)
+    except OSError:
+        pass
+    return addresses
+
+
+def subnet_prefix(address: Optional[str] = None) -> Optional[str]:
+    """Primeiros três octetos da rede local (ex.: "192.168.1")."""
+    address = address or local_ip()
+    if not address:
+        return None
+    parts = address.split(".")
+    if len(parts) != 4:
+        return None
+    return ".".join(parts[:3])
+
+
+def icmp_ping(ip: str, timeout: float = 1.5) -> Optional[bool]:
+    """Ping simples via sistema. None quando não foi possível testar."""
+    import platform
+    import subprocess
+
+    if platform.system() == "Windows":
+        command = ["ping", "-n", "1", "-w", str(int(timeout * 1000)), ip]
+    else:
+        command = ["ping", "-c", "1", "-W", str(max(1, int(timeout))), ip]
+    try:
+        result = subprocess.run(
+            command,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=timeout + 2,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return result.returncode == 0
+
+
 def _open_socket(timeout: float) -> socket.socket:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
@@ -123,6 +173,8 @@ def scan(
     targets: Optional[Sequence[str]] = None,
     timeout: float = 3.0,
     port: int = PORT,
+    sweep: bool = False,
+    sweep_timeout: float = 2.0,
 ) -> List[DeviceInfo]:
     """Discover units on the LAN.
 
@@ -131,6 +183,9 @@ def scan(
             broadcast plus the local /24 broadcast.
         timeout: How long to wait for answers.
         port: Device UDP port (always 7000 in practice).
+        sweep: When the broadcast finds nothing, probe every host of the local
+            /24 with unicast (some routers drop broadcast between Wi-Fi/LAN).
+        sweep_timeout: How long the unicast sweep listens for answers.
     """
     destinations = list(targets) if targets else broadcast_targets()
     deadline = time.monotonic() + timeout
@@ -167,6 +222,79 @@ def scan(
             if info and info.mac not in found:
                 found[info.mac] = info
                 _LOGGER.debug("found %s at %s", info.mac, info.ip)
+    finally:
+        sock.close()
+
+    if not found and sweep and not targets:
+        _LOGGER.info("broadcast sem resposta; varrendo a rede local em unicast")
+        return scan_subnet(timeout=sweep_timeout, port=port)
+
+    return list(found.values())
+
+
+def scan_subnet(
+    subnet: Optional[str] = None,
+    timeout: float = 2.0,
+    port: int = PORT,
+    local: Optional[str] = None,
+) -> List[DeviceInfo]:
+    """Varre a rede /24 em unicast (1..254) à procura de aparelhos.
+
+    Funciona quando o roteador bloqueia broadcast entre Wi-Fi e cabo, e também
+    encontra aparelhos cujo IP mudou no DHCP.
+    """
+    prefix = subnet or subnet_prefix(local)
+    if not prefix:
+        return []
+    prefix = prefix.strip().rstrip("/").split("/")[0].rstrip(".")
+    if prefix.count(".") == 3:  # veio um IP completo
+        prefix = ".".join(prefix.split(".")[:3])
+
+    # Inclui o próprio endereço: um emulador local também deve ser encontrado.
+    hosts = [f"{prefix}.{index}" for index in range(1, 255)]
+
+    request = json.dumps(build_scan()).encode()
+    deadline = time.monotonic() + timeout + 0.5
+    found: Dict[str, DeviceInfo] = {}
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        sock.bind(("", 0))
+    except OSError:
+        pass
+    sock.setblocking(False)
+    try:
+        for host in hosts:
+            try:
+                sock.sendto(request, (host, port))
+            except OSError as exc:
+                _LOGGER.debug("sweep para %s falhou: %s", host, exc)
+        deadline = time.monotonic() + timeout
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            try:
+                ready, _, _ = select.select([sock], [], [], min(remaining, 0.2))
+            except (OSError, ValueError):
+                break
+            if not ready:
+                continue
+            try:
+                data, address = sock.recvfrom(65535)
+            except (BlockingIOError, OSError):
+                continue
+            try:
+                packet = decode_packet(data, CipherV1(GENERIC_KEY_V1), allow_key=CipherV2(GENERIC_KEY_V2))
+            except Exception as exc:  # noqa: BLE001
+                _LOGGER.debug("sweep: resposta ilegível de %s: %s", address, exc)
+                continue
+            info = _device_from_packet(packet, address)
+            if info and info.mac not in found:
+                found[info.mac] = info
+                _LOGGER.debug("sweep encontrou %s em %s", info.mac, info.ip)
     finally:
         sock.close()
 

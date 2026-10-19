@@ -11,7 +11,18 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from . import __version__
-from .client import GreeClient, GreeError, GreeTimeout, broadcast_targets, local_ip, scan
+from .client import (
+    GreeClient,
+    GreeError,
+    GreeTimeout,
+    broadcast_targets,
+    icmp_ping,
+    local_addresses,
+    local_ip,
+    scan,
+    scan_subnet,
+    subnet_prefix,
+)
 from .crypto import CipherV2, make_cipher
 from .packets import PORT, DeviceInfo, format_mac, key_bytes
 
@@ -335,11 +346,16 @@ def print_scan(devices: List[DeviceInfo]) -> None:
 def cmd_scan(args) -> int:
     targets = args.target or None
     timeout = args.timeout or 3.0
-    devices = scan(targets, timeout=timeout, port=args.port or PORT)
+    sweep = (not targets) and not args.no_sweep
+    if sweep and not args.json:
+        print(Style.dim(f"Procurando em broadcast e varrendo {subnet_prefix() or '?'}.0/24 em unicast..."))
+    devices = scan(targets, timeout=timeout, port=args.port or PORT, sweep=sweep)
     if args.json:
         print_json([d.to_dict() for d in devices])
     else:
         print_scan(devices)
+        if not devices:
+            print(Style.dim("\nSe o aparelho existe, tente: python gree.py scan --target <ip-do-aparelho>"))
     return 0 if devices else 1
 
 
@@ -522,7 +538,11 @@ def cmd_diagnose(args) -> int:
     print(f"versão: {__version__}")
     print(f"python: {sys.version.split()[0]} ({platform.platform()})")
     print(f"IP local: {local_ip() or 'não detectado'}")
+    for address in local_addresses():
+        if address != local_ip():
+            print(f"outro endereço: {address}")
     print(f"broadcasts testados: {', '.join(broadcast_targets())}")
+    print(f"rede varrida: {subnet_prefix() or '?'}.0/24")
     print()
 
     config = load_config(getattr(args, "config", None))
@@ -535,50 +555,96 @@ def cmd_diagnose(args) -> int:
             print(f"  key: {mask_key(str(config['key']))} ({len(str(config['key']))} caracteres)")
         print()
 
-    targets = args.target or None
-    print("--- Busca (scan) ---")
-    try:
-        devices = scan(targets, timeout=args.timeout or 5.0, port=args.port or PORT)
-    except OSError as exc:
-        print(f"falhou: {exc}")
-        devices = []
-    if not devices:
-        print("nenhum aparelho respondeu")
-    for device in devices:
-        print(f"  {device.name or '?'} | {device.ip}:{device.port} | mac {device.mac} | "
-              f"fw {device.version or '?'} | modelo {device.model or '?'} | mid {device.mid or '?'} | "
-              f"protocolo {device.protocol or '?'}")
+    # IPs que devemos testar diretamente (--target/--ip, config e histórico)
+    hints: List[str] = []
+    for value in list(args.target or []) + ([args.ip] if getattr(args, "ip", None) else []):
+        if value and value not in hints:
+            hints.append(value)
+    if config.get("ip") and config["ip"] not in hints:
+        hints.append(str(config["ip"]))
+
+    # 1) ping nos IPs conhecidos: separa "rede não alcança" de "UDP bloqueado"
+    if hints:
+        print("--- Alcançabilidade (ping) ---")
+        for address in hints:
+            result = icmp_ping(address)
+            if result is None:
+                print(f"  {address}: não foi possível testar")
+            else:
+                print(f"  {address}: {'responde ao ping' if result else 'NÃO responde ao ping'}")
+        print()
+
+    # 2) broadcast
+    print("--- Busca (broadcast) ---")
+    devices = scan(None, timeout=args.timeout or 4.0, port=args.port or PORT)
+    if devices:
+        for device in devices:
+            print(f"  {device.name or '?'} | {device.ip}:{device.port} | mac {device.mac} | "
+                  f"fw {device.version or '?'} | modelo {device.model or '?'} | protocolo {device.protocol or '?'}")
+    else:
+        print("  nenhum aparelho respondeu ao broadcast")
     print()
 
-    print("--- Pareamento (bind) por geração ---")
-    for device in devices:
-        versions = [device.protocol] if device.protocol in ("v1", "v2") else ["v1", "v2"]
-        for version in versions:
-            client = GreeClient(
-                device.ip,
-                port=device.port,
-                mac=device.mac,
-                protocol=version,
-                timeout=3.0,
-                probe_timeout=2.0,
-                retries=1,
-            )
+    # 3) varredura unicast (funciona quando o broadcast é bloqueado)
+    if not devices:
+        print(f"--- Varredura unicast em {subnet_prefix() or '?'}.0/24 ---")
+        devices = scan_subnet(timeout=max(2.0, args.timeout or 4.0), port=args.port or PORT)
+        if devices:
+            for device in devices:
+                print(f"  {device.name or '?'} | {device.ip}:{device.port} | mac {device.mac} | "
+                      f"fw {device.version or '?'} | modelo {device.model or '?'} | protocolo {device.protocol or '?'}")
+        else:
+            print("  nenhum aparelho respondeu à varredura")
+        print()
+
+    # 4) unicast direto nos IPs conhecidos
+    if not devices and hints:
+        print("--- Busca direta nos IPs conhecidos ---")
+        for address in hints:
             try:
-                key = client.bind()
-            except GreeError as exc:
-                print(f"  {device.ip} / {version}: {exc}")
+                found = scan([address], timeout=max(1.5, args.timeout or 3.0), port=args.port or PORT)
+            except OSError as exc:
+                print(f"  {address}: erro {exc}")
                 continue
-            used = client.protocol or version
-            note = "" if used == version else f" (negociado como {used})"
-            print(f"  {device.ip} / {version}: OK{note} (chave {mask_key(key)})")
-            try:
-                raw = client.status()
-                interesting = {k: raw[k] for k in ("Pow", "Mod", "SetTem", "TemSen", "TemUn", "hid") if k in raw}
-                print(f"    status: {len(raw)} propriedades {interesting}")
-            except GreeError as exc:
-                print(f"    status falhou: {exc}")
-            break
-    print()
+            if found:
+                devices.extend(found)
+                for device in found:
+                    print(f"  {address}: respondeu (mac {device.mac}, fw {device.version or '?'})")
+            else:
+                print(f"  {address}: sem resposta")
+        print()
+
+    # 5) pareamento
+    if devices:
+        print("--- Pareamento (bind) por geração ---")
+        for device in devices:
+            versions = [device.protocol] if device.protocol in ("v1", "v2") else ["v1", "v2"]
+            for version in versions:
+                client = GreeClient(
+                    device.ip,
+                    port=device.port,
+                    mac=device.mac,
+                    protocol=version,
+                    timeout=3.0,
+                    probe_timeout=2.0,
+                    retries=1,
+                )
+                try:
+                    key = client.bind()
+                except GreeError as exc:
+                    print(f"  {device.ip} / {version}: {exc}")
+                    continue
+                used = client.protocol or version
+                note = "" if used == version else f" (negociado como {used})"
+                print(f"  {device.ip} / {version}: OK{note} (chave {mask_key(key)})")
+                try:
+                    raw = client.status()
+                    interesting = {k: raw[k] for k in ("Pow", "Mod", "SetTem", "TemSen", "TemUn", "hid") if k in raw}
+                    print(f"    status: {len(raw)} propriedades {interesting}")
+                except GreeError as exc:
+                    print(f"    status falhou: {exc}")
+                break
+        print()
 
     if config.get("ip") and config.get("key"):
         print("--- Status com a chave salva ---")
@@ -588,6 +654,17 @@ def cmd_diagnose(args) -> int:
             print(f"  OK: {len(raw)} propriedades")
         except GreeError as exc:
             print(f"  falhou: {exc}")
+        print()
+
+    if not devices:
+        print("--- Nada encontrado: o que verificar ---")
+        print("  1. O PC e o ar-condicionado estão no MESMO Wi-Fi/roteador?")
+        print("     (não use rede de visitantes; evite VPN no PC)")
+        print("  2. O ar-condicionado está ligado na tomada e o Wi-Fi dele conectado?")
+        print("     Confira na lista de dispositivos do roteador se o IP dele aparece.")
+        print("  3. Feche o app GREE+ no celular e tente de novo (um cliente por vez).")
+        print("  4. Firewall do Windows: rode LIBERAR-FIREWALL.bat (pede permissão de administrador).")
+        print("  5. Se o roteador tiver 'isolamento de clientes/AP', desative para esta rede.")
         print()
 
     print("=== Fim do diagnóstico ===")
@@ -678,6 +755,7 @@ def build_parser() -> argparse.ArgumentParser:
     scan_p.add_argument("--timeout", type=float, default=3.0, help="segundos aguardando respostas")
     scan_p.add_argument("--port", type=int, default=None, help="porta UDP (padrão 7000)")
     scan_p.add_argument("--json", action="store_true", help="saída em JSON")
+    scan_p.add_argument("--no-sweep", action="store_true", help="não varrer a rede /24 após o broadcast")
     scan_p.set_defaults(func=cmd_scan)
 
     bind_p = sub.add_parser("bind", help="pareia com o aparelho e salva a chave")
@@ -722,6 +800,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     diag_p = sub.add_parser("diagnose", help="testa a rede e gera um relatório para suporte")
     diag_p.add_argument("--target", action="append", help="IP ou broadcast específico (pode repetir)")
+    diag_p.add_argument("--ip", help="IP do aparelho para testar diretamente")
     diag_p.add_argument("--port", type=int, default=None, help="porta UDP (padrão 7000)")
     diag_p.add_argument("--timeout", type=float, default=5.0, help="segundos aguardando respostas")
     diag_p.add_argument("--config", help=f"arquivo de configuração (padrão {DEFAULT_CONFIG})")

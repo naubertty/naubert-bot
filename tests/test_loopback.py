@@ -125,3 +125,25 @@ def test_bind_works_without_unicast_discovery(emulator, monkeypatch):
 
     monkeypatch.setattr(client, "discover", sem_descoberta)
     assert client.bind() == emulator.key.decode()
+
+
+def test_scan_subnet_finds_emulator(emulator):
+    from greeplus.client import scan_subnet
+
+    devices = scan_subnet(local="127.0.0.1", timeout=1.5, port=emulator.port)
+    assert any(d.mac == emulator.mac for d in devices)
+
+
+def test_scan_sweep_when_broadcast_fails(emulator, monkeypatch):
+    import greeplus.client as client_module
+
+    monkeypatch.setattr(client_module, "broadcast_targets", lambda: ["192.0.2.1"])  # TEST-NET: sem resposta
+    monkeypatch.setattr(client_module, "local_ip", lambda: "127.0.0.1")
+    devices = client_module.scan(None, timeout=0.6, port=emulator.port, sweep=True, sweep_timeout=1.5)
+    assert [d.mac for d in devices] == [emulator.mac]
+
+
+def test_icmp_ping_loopback():
+    from greeplus.client import icmp_ping
+
+    assert icmp_ping("127.0.0.1") in (True, None)

@@ -267,7 +267,7 @@ def make_handler(session: DeviceSession):
                 except ValueError:
                     scan_port = PORT
                 try:
-                    devices = scan(targets, timeout=2.5, port=scan_port)
+                    devices = scan(targets, timeout=2.5, port=scan_port, sweep=True, sweep_timeout=1.8)
                 except OSError as exc:
                     self._send_error_json(f"falha na busca: {exc}", 500)
                     return
