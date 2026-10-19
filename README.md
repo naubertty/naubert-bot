@@ -24,6 +24,7 @@ dependências externas.
 |---|---|
 | `INICIAR-DEMO.bat` | testa a interface com um aparelho **simulado** (não precisa de ar-condicionado) |
 | `INICIAR-AR-CONDICIONADO.bat` | procura o aparelho na rede, pareia e abre o controle |
+| `DIAGNOSTICO.bat` | se algo falhar: testa tudo e gera `diagnostico.txt` para enviar a quem ajuda |
 
 > Não digite comandos dentro de `C:\Windows\System32`. Os arquivos `.bat` já abrem na
 > pasta certa. Se o Windows mostrar “O Windows protegeu o computador”, clique em
@@ -89,6 +90,7 @@ python gree.py status [--raw] [--json]
 python gree.py set pow=on mode=cool temp=22 fan=3 swing=oscilar light=on
 python gree.py watch --interval 5
 python gree.py emulator [--protocol v1|v2] [--port 7000]
+python gree.py diagnose          # relatório de rede + tentativa de bind v1/v2
 ```
 
 Depois do `bind`, o IP, o MAC e a chave ficam salvos em `greeplus.json`, então os demais
@@ -161,7 +163,7 @@ sem depender do aparelho.
 | `Nenhum aparelho respondeu` | PC e aparelho em redes/VLANs diferentes, Wi-Fi de convidados com isolamento, ou firewall bloqueando UDP. Teste `ping <ip>` e use `scan --target <ip>`. |
 | `Sem resposta` no `status` | A chave mudou (o app Gree+ foi usado para reparear) ou outro celular assumiu o controle. Rode `bind` de novo. |
 | `bind` funciona, mas comandos não | Alguns modelos usam a geração **v2**; force com `--protocol v2`. |
-| A busca acha, mas "Conectar" falha | Firmwares novos (ex.: **V3.4.M**) só aceitam o pareamento na mesma sessão UDP do scan. Atualize o projeto (baixe o ZIP de novo) — o fluxo já faz scan + bind no mesmo socket. |
+| A busca acha, mas "Conectar" falha | Firmwares novos (ex.: **V3.4.M**) só aceitam o pareamento na mesma sessão UDP do scan. Atualize o projeto (baixe o ZIP de novo) — o fluxo já faz scan + bind no mesmo socket. Se continuar, rode `DIAGNOSTICO.bat` e envie o `diagnostico.txt`. |
 | Interface web abre, mas não conecta | O servidor precisa estar no mesmo PC/rede que alcança o aparelho; verifique o IP salvo em `greeplus.json`. |
 | Porta 7000 ocupada | Feche outros servidores locais (Home Assistant, emulador) ou use `--port` para o emulador. |
 | Windows bloqueia a busca | Libere o Python no firewall do Windows (Redes privadas), ou conecte por IP. |

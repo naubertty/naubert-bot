@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from . import __version__
-from .client import GreeClient, GreeError, GreeTimeout, scan
+from .client import GreeClient, GreeError, GreeTimeout, broadcast_targets, local_ip, scan
 from .crypto import CipherV2, make_cipher
 from .packets import PORT, DeviceInfo, format_mac, key_bytes
 
@@ -506,6 +506,91 @@ def cmd_watch(args) -> int:
         return 2
 
 
+def mask_key(key: str) -> str:
+    if not key:
+        return "(vazia)"
+    if len(key) <= 4:
+        return "*" * len(key)
+    return key[:3] + "*" * (len(key) - 3)
+
+
+def cmd_diagnose(args) -> int:
+    """Relatório de diagnóstico para colar em um chamado de suporte."""
+    import platform
+
+    print("=== Diagnóstico greeplus ===")
+    print(f"versão: {__version__}")
+    print(f"python: {sys.version.split()[0]} ({platform.platform()})")
+    print(f"IP local: {local_ip() or 'não detectado'}")
+    print(f"broadcasts testados: {', '.join(broadcast_targets())}")
+    print()
+
+    config = load_config(getattr(args, "config", None))
+    if config:
+        print("Configuração salva:")
+        for field in ("ip", "port", "mac", "name", "model", "version", "mid", "protocol"):
+            if config.get(field) not in (None, ""):
+                print(f"  {field}: {config.get(field)}")
+        if config.get("key"):
+            print(f"  key: {mask_key(str(config['key']))} ({len(str(config['key']))} caracteres)")
+        print()
+
+    targets = args.target or None
+    print("--- Busca (scan) ---")
+    try:
+        devices = scan(targets, timeout=args.timeout or 5.0, port=args.port or PORT)
+    except OSError as exc:
+        print(f"falhou: {exc}")
+        devices = []
+    if not devices:
+        print("nenhum aparelho respondeu")
+    for device in devices:
+        print(f"  {device.name or '?'} | {device.ip}:{device.port} | mac {device.mac} | "
+              f"fw {device.version or '?'} | modelo {device.model or '?'} | mid {device.mid or '?'} | "
+              f"protocolo {device.protocol or '?'}")
+    print()
+
+    print("--- Pareamento (bind) por geração ---")
+    for device in devices:
+        for version in ("v1", "v2"):
+            client = GreeClient(
+                device.ip,
+                port=device.port,
+                mac=device.mac,
+                protocol=version,
+                timeout=3.0,
+                probe_timeout=2.0,
+                retries=1,
+            )
+            try:
+                key = client.bind()
+            except GreeError as exc:
+                print(f"  {device.ip} / {version}: {exc}")
+                continue
+            print(f"  {device.ip} / {version}: OK (chave {mask_key(key)})")
+            try:
+                raw = client.status()
+                interesting = {k: raw[k] for k in ("Pow", "Mod", "SetTem", "TemSen", "TemUn", "hid") if k in raw}
+                print(f"    status: {len(raw)} propriedades {interesting}")
+            except GreeError as exc:
+                print(f"    status falhou: {exc}")
+            break
+    print()
+
+    if config.get("ip") and config.get("key"):
+        print("--- Status com a chave salva ---")
+        client = client_from_args(args, config, require_key=True)
+        try:
+            raw = client.status()
+            print(f"  OK: {len(raw)} propriedades")
+        except GreeError as exc:
+            print(f"  falhou: {exc}")
+        print()
+
+    print("=== Fim do diagnóstico ===")
+    return 0
+
+
 def cmd_web(args) -> int:
     from .web import main as web_main
 
@@ -631,6 +716,13 @@ def build_parser() -> argparse.ArgumentParser:
     decode_p.add_argument("--protocol", choices=["v1", "v2"], help="força a geração do protocolo")
     decode_p.add_argument("--json", action="store_true", help="saída em JSON")
     decode_p.set_defaults(func=cmd_decode)
+
+    diag_p = sub.add_parser("diagnose", help="testa a rede e gera um relatório para suporte")
+    diag_p.add_argument("--target", action="append", help="IP ou broadcast específico (pode repetir)")
+    diag_p.add_argument("--port", type=int, default=None, help="porta UDP (padrão 7000)")
+    diag_p.add_argument("--timeout", type=float, default=5.0, help="segundos aguardando respostas")
+    diag_p.add_argument("--config", help=f"arquivo de configuração (padrão {DEFAULT_CONFIG})")
+    diag_p.set_defaults(func=cmd_diagnose)
 
     emu_p = sub.add_parser("emulator", help="roda um aparelho Gree falso para testes")
     emu_p.add_argument("--host", default="0.0.0.0", help="endereço de escuta (padrão 0.0.0.0)")

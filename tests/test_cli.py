@@ -151,3 +151,22 @@ def test_cli_decode_failure(capsys):
     code, out = run_cli(capsys, "decode", "--pack", bad)
     assert code == 1
     assert "decifrar" in out or "chave" in out
+
+
+def test_cli_diagnose(emulator, capsys, tmp_path):
+    code, out = run_cli(
+        capsys,
+        "diagnose",
+        "--target",
+        "127.0.0.1",
+        "--port",
+        str(emulator.port),
+        "--config",
+        str(tmp_path / "cfg.json"),
+        "--timeout",
+        "1.5",
+    )
+    assert code == 0
+    assert "Diagnóstico greeplus" in out
+    assert emulator.mac in out
+    assert "bind" in out or "OK" in out
