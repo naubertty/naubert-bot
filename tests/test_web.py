@@ -145,3 +145,40 @@ def test_connect_with_scanned_device_uses_single_session(tmp_path):
         httpd.shutdown()
         httpd.server_close()
         emu.stop()
+
+
+def test_session_recovers_when_ip_changed(emulator, tmp_path, monkeypatch):
+    """Se o DHCP trocar o IP do aparelho, a sessão acha pelo MAC e salva de novo."""
+    import greeplus.web as web_module
+    from greeplus.packets import DeviceInfo
+
+    config_file = tmp_path / "client.json"
+    config_file.write_text(
+        json.dumps(
+            {
+                "ip": "10.0.0.99",  # IP antigo/errado
+                "port": emulator.port,
+                "mac": emulator.mac,
+                "key": emulator.key.decode(),
+                "protocol": emulator.protocol,
+            }
+        )
+    )
+
+    def fake_scan(targets=None, timeout=2.5, port=7000, sweep=False, sweep_timeout=1.5):
+        return [DeviceInfo(ip="127.0.0.1", port=emulator.port, mac=emulator.mac)]
+
+    monkeypatch.setattr(web_module, "scan", fake_scan)
+
+    session = DeviceSession(config_file=str(config_file))
+    payload = session.connect(
+        ip="10.0.0.99",
+        port=emulator.port,
+        key=emulator.key.decode(),
+        mac=emulator.mac,
+        protocol=emulator.protocol,
+    )
+    assert payload["device"]["ip"] == "127.0.0.1"
+    assert payload["connected"] is True
+    saved = json.loads(config_file.read_text())
+    assert saved["ip"] == "127.0.0.1"

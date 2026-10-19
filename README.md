@@ -26,6 +26,9 @@ dependências externas.
 | `INICIAR-AR-CONDICIONADO.bat` | procura o aparelho na rede, pareia e abre o controle |
 | `DIAGNOSTICO.bat` | se algo falhar: testa a rede, o ping, o broadcast, varre a rede e gera `diagnostico.txt` |
 | `LIBERAR-FIREWALL.bat` | libera a porta UDP 7000 no firewall do Windows (pede permissão de administrador) |
+| `INICIAR-COM-O-WINDOWS.bat` | roda uma vez: deixa o controle pronto sempre que ligar o PC |
+| `ABRIR-CONTROLE.bat` | abre a interface (sobe o servidor escondido se preciso) |
+| `REMOVER-DA-INICIACAO.bat` | desfaz a inicialização automática |
 
 > Não digite comandos dentro de `C:\Windows\System32`. Os arquivos `.bat` já abrem na
 > pasta certa. Se o Windows mostrar “O Windows protegeu o computador”, clique em
@@ -56,6 +59,31 @@ A interface web também funciona com um aparelho simulado, sem ar-condicionado:
 ```bash
 python gree.py web --demo --open
 ```
+
+---
+
+## Deixar pronto sempre que ligar o PC
+
+Rode **uma vez** `INICIAR-COM-O-WINDOWS.bat`. Ele cria:
+
+1. um atalho na pasta **Inicializar** do Windows — o servidor sobe escondido (sem janela)
+   junto com o PC, já com o pareamento salvo em `greeplus.json`;
+2. um atalho **“Abrir Gree+”** na Área de Trabalho.
+
+Depois disso, o dia a dia é: ligar o PC → abrir o atalho **Abrir Gree+** → clicar nos botões.
+O servidor fica em segundo plano; se você abrir o atalho com ele já rodando, ele só abre o
+navegador (não duplica). Para desfazer, rode `REMOVER-DA-INICIACAO.bat`.
+
+Recursos pensados para esse uso:
+
+- **Reconexão automática**: se o roteador trocar o IP do aparelho (DHCP), o programa acha
+  de novo pelo MAC e atualiza o `greeplus.json`.
+- **Re-pareamento automático**: se a chave mudar (alguém repareou no app do celular), ele
+  refaz o bind sozinho.
+- **Sem intervenção**: nada de terminal aberto, nada de digitar IP todo dia.
+
+> O servidor escuta em `0.0.0.0:8080` (acessível por outros aparelhos da casa). Se preferir
+> só no próprio PC, edite `servidor.bat` e troque `--host 0.0.0.0` por `--host 127.0.0.1`.
 
 ---
 

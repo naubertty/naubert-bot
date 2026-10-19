@@ -724,8 +724,7 @@ def cmd_sniff(args) -> int:
 def cmd_web(args) -> int:
     from .web import main as web_main
 
-    web_main(args)
-    return 0
+    return int(web_main(args) or 0)
 
 
 def cmd_decode(args) -> int:

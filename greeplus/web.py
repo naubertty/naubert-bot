@@ -147,6 +147,45 @@ class DeviceSession:
         finally:
             self._recovering = False
 
+    def _refresh_endpoint_locked(self) -> bool:
+        """Procura o aparelho pelo MAC e atualiza o IP salvo (DHCP pode mudar)."""
+        if self.client is None or not self.client.info.mac:
+            return False
+        port = self.client.info.port
+        try:
+            devices = scan(None, timeout=2.5, port=port, sweep=True, sweep_timeout=1.5)
+        except OSError:
+            return False
+        for device in devices:
+            if device.mac == self.client.info.mac:
+                if device.ip != self.client.info.ip:
+                    _LOGGER.info("aparelho mudou de %s para %s", self.client.info.ip, device.ip)
+                    self.client.info.ip = device.ip
+                    self._persist_locked()
+                return True
+        return False
+
+    def _persist_locked(self) -> None:
+        """Salva IP/chave atuais para o próximo início do programa."""
+        client = self.client
+        if client is None or not client.info.mac or not client.key:
+            return
+        data = {
+            "ip": client.info.ip,
+            "port": client.info.port,
+            "mac": client.info.mac,
+            "key": client.key.decode("ascii", "replace"),
+            "name": client.info.name,
+            "model": client.info.model,
+            "version": client.info.version,
+            "mid": client.info.mid,
+            "protocol": client.protocol,
+        }
+        try:
+            save_config(data, self.config_file)
+        except OSError as exc:
+            _LOGGER.debug("não foi possível salvar a configuração: %s", exc)
+
     def _state_locked(self, force: bool = False) -> Dict[str, Any]:
         if self.client is None:
             return {"connected": False}
@@ -158,15 +197,25 @@ class DeviceSession:
             raw = self.client.status()
             self.last_error = None
         except GreeTimeout:
-            # First try to re-pair once, then poll again: the Gree+ app may
-            # have rotated the key.
+            # 1) o IP mudou no DHCP? Procura pelo MAC e tenta de novo.
+            recovered = False
             try:
-                self._recover_locked()
-                raw = self.client.status()
-                self.last_error = None
-            except GreeError as exc:
-                self.last_error = str(exc)
-                raise
+                recovered = self._refresh_endpoint_locked()
+                if recovered:
+                    raw = self.client.status()
+                    self.last_error = None
+            except GreeError:
+                recovered = False
+
+            # 2) a chave mudou? Refaz o pareamento e tenta de novo.
+            if not recovered:
+                try:
+                    self._recover_locked()
+                    raw = self.client.status()
+                    self.last_error = None
+                except GreeError as exc:
+                    self.last_error = str(exc)
+                    raise
         except GreeError as exc:
             self.last_error = str(exc)
             raise
@@ -369,7 +418,11 @@ def main(args) -> int:
     except OSError as exc:
         if emulator:
             emulator.stop()
-        print(f"Não foi possível abrir a porta {args.http_port}: {exc}")
+        if getattr(exc, "errno", None) in (98, 48, 10048):
+            print(f"A porta {args.http_port} já está em uso — provavelmente o Gree+ já está rodando.")
+            print(f"Abra http://localhost:{args.http_port}/ no navegador.")
+        else:
+            print(f"Não foi possível abrir a porta {args.http_port}: {exc}")
         return 1
 
     url_host = "localhost" if args.host in ("0.0.0.0", "::") else args.host
