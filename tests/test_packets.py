@@ -5,6 +5,7 @@ import pytest
 from greeplus.crypto import CipherV1, CipherV2
 from greeplus.packets import (
     Packet,
+    normalize_ip,
     build_bind,
     build_command,
     build_envelope,
@@ -114,3 +115,12 @@ def test_decrypt_packet_requires_pack():
     packet = Packet(parse_envelope(b'{"t":"pack"}'))
     with pytest.raises(Exception):
         decrypt_packet(packet, CipherV1())
+
+
+def test_normalize_ip():
+    assert normalize_ip("192.168.0.35") == "192.168.0.35"
+    assert normalize_ip(" 192.168.0.35 ") == "192.168.0.35"
+    assert normalize_ip("http://192.168.0.35/") == "192.168.0.35"
+    assert normalize_ip("[192.168.0.35]") == "192.168.0.35"
+    assert normalize_ip("192.168.0.35:7000") == "192.168.0.35"
+    assert normalize_ip("") == ""

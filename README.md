@@ -10,6 +10,27 @@ dependências externas.
 
 ---
 
+## Windows — sem Git, em 4 passos
+
+1. **Baixe o projeto pronto** (não precisa instalar Git):
+   [naubert-bot.zip](https://github.com/naubertty/naubert-bot/archive/refs/heads/arena/d4b4eb20-naubert-bot.zip)
+2. Clique com o **botão direito** no ZIP → **Extrair tudo** e escolha uma pasta simples,
+   por exemplo `C:\gree`.
+3. Se ainda não tiver Python: instale de [python.org/downloads](https://www.python.org/downloads/)
+   e **marque “Add python.exe to PATH”** na primeira tela do instalador.
+4. Abra a pasta extraída e dê **dois cliques** em um destes arquivos:
+
+| Arquivo | O que faz |
+|---|---|
+| `INICIAR-DEMO.bat` | testa a interface com um aparelho **simulado** (não precisa de ar-condicionado) |
+| `INICIAR-AR-CONDICIONADO.bat` | procura o aparelho na rede, pareia e abre o controle |
+
+> Não digite comandos dentro de `C:\Windows\System32`. Os arquivos `.bat` já abrem na
+> pasta certa. Se o Windows mostrar “O Windows protegeu o computador”, clique em
+> **Mais informações → Executar assim mesmo** (o código é aberto, você pode ler).
+
+---
+
 ## Começando em 3 passos
 
 Pré-requisito: **Python 3.9+** (Windows, macOS ou Linux). Não precisa instalar nada além dele.

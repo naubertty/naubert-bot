@@ -28,6 +28,7 @@ from .packets import (
     build_scan,
     canonical_mac,
     command_to_dict,
+    normalize_ip,
     decode_packet,
     key_bytes,
     status_to_dict,
@@ -207,7 +208,7 @@ class GreeClient:
         retries: int = 2,
     ) -> None:
         self.info = DeviceInfo(
-            ip=ip,
+            ip=normalize_ip(ip),
             port=port,
             mac=canonical_mac(mac),
             name=name,

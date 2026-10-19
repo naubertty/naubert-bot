@@ -59,6 +59,17 @@ class ProtocolError(Exception):
     """Raised when a device reply cannot be understood."""
 
 
+def normalize_ip(value: Optional[str]) -> str:
+    """Aceita "192.168.0.35", "http://192.168.0.35/", "[192.168.0.35]" etc."""
+    if not value:
+        return ""
+    text = str(value).strip()
+    text = re.sub(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", "", text)  # http://, udp://
+    text = text.split("/")[0].split(" ")[0].strip("[]")
+    match = re.search(r"(\d{1,3}(?:\.\d{1,3}){3})", text)
+    return match.group(1) if match else text
+
+
 def canonical_mac(value: Optional[str]) -> Optional[str]:
     """Normalise a MAC to 12 lowercase hex digits, or return None."""
     if not value:

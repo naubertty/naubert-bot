@@ -20,7 +20,7 @@ from urllib.parse import parse_qs, urlparse
 from .cli import friendly_state, load_config, save_config
 from .client import GreeClient, GreeError, GreeTimeout, scan
 from .emulator import GreeEmulator
-from .packets import PORT, DeviceInfo
+from .packets import PORT, DeviceInfo, normalize_ip
 
 _LOGGER = logging.getLogger(__name__)
 WEB_DIR = Path(__file__).resolve().parent
@@ -55,7 +55,7 @@ class DeviceSession:
         bind_if_needed: bool = True,
     ) -> Dict[str, Any]:
         with self.lock:
-            ip = (ip or "").strip()
+            ip = normalize_ip(ip)
             if not ip:
                 config = load_config(self.config_file)
                 ip = config.get("ip", "")
