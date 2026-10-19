@@ -421,8 +421,11 @@ def discover_with_retry(ip: str, timeout: Optional[float], port: int) -> Optiona
 
 def cmd_status(args) -> int:
     client = client_from_args(args)
+    columns = None
+    if getattr(args, "cols", None):
+        columns = [name.strip() for name in args.cols.split(",") if name.strip()]
     try:
-        raw = client.status()
+        raw = client.status(columns=columns)
     except GreeTimeout as exc:
         print(Style.yellow(f"Sem resposta: {exc}"))
         print(Style.dim("Dica: rode 'python gree.py bind --ip <ip>' novamente se o app Gree+ foi repareado."))
@@ -597,6 +600,7 @@ def build_parser() -> argparse.ArgumentParser:
     status_p = sub.add_parser("status", help="mostra o estado atual")
     add_connection_options(status_p)
     status_p.add_argument("--raw", action="store_true", help="mostra as propriedades cruas do protocolo")
+    status_p.add_argument("--cols", help="propriedades específicas separadas por vírgula (ex.: hid,name,host)")
     status_p.set_defaults(func=cmd_status)
 
     set_p = sub.add_parser("set", help="envia comandos (ex.: temp=22 pow=on)")
