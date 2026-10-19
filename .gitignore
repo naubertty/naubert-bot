@@ -1,5 +1,6 @@
 # Config gerado pelo pareamento (contém a chave do aparelho)
 greeplus.json
+greeplus-demo.json
 *.local.json
 
 # Python

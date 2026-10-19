@@ -339,7 +339,11 @@ def make_handler(session: DeviceSession):
 
 def main(args) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    session = DeviceSession(config_file=getattr(args, "config", None))
+    config_file = getattr(args, "config", None)
+    if getattr(args, "demo", False) and not config_file:
+        # O modo demonstração não pode sobrescrever o pareamento do aparelho real.
+        config_file = "greeplus-demo.json"
+    session = DeviceSession(config_file=config_file)
     emulator: Optional[GreeEmulator] = None
 
     if getattr(args, "demo", False):
@@ -356,7 +360,7 @@ def main(args) -> int:
             "name": emulator.name,
             "protocol": emulator.protocol,
         }
-        save_config(demo_config, args.config)
+        save_config(demo_config, config_file)
         print("Modo demonstração: aparelho emulado em udp://127.0.0.1:7000")
 
     handler = make_handler(session)
