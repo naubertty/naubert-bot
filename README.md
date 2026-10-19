@@ -70,6 +70,12 @@ Rode **uma vez** `INICIAR-COM-O-WINDOWS.bat`. Ele cria:
    junto com o PC, já com o pareamento salvo em `greeplus.json`;
 2. um atalho **“Abrir Gree+”** na Área de Trabalho.
 
+O instalador usa a API do próprio Windows (`[Environment]::GetFolderPath`) para achar a pasta
+**Inicializar** e a **Área de Trabalho**, então funciona com Windows em português, com OneDrive
+e com a pasta do projeto em qualquer lugar. Se a criação do atalho falhar, ele registra a
+inicialização na chave `Run` do usuário como plano B — e, em último caso, mostra o caminho
+manual (`Win+R` → `shell:startup`).
+
 Depois disso, o dia a dia é: ligar o PC → abrir o atalho **Abrir Gree+** → clicar nos botões.
 O servidor fica em segundo plano; se você abrir o atalho com ele já rodando, ele só abre o
 navegador (não duplica). Para desfazer, rode `REMOVER-DA-INICIACAO.bat`.
@@ -196,6 +202,7 @@ sem depender do aparelho.
 | A busca acha, mas "Conectar" falha | Firmwares novos (ex.: **V3.4.M**) só aceitam o pareamento na mesma sessão UDP do scan. Atualize o projeto (baixe o ZIP de novo) — o fluxo já faz scan + bind no mesmo socket. Se continuar, rode `DIAGNOSTICO.bat` e envie o `diagnostico.txt`. |
 | Interface web abre, mas não conecta | Feche o app GREE+ no celular (ele pode estar segurando a conexão com o aparelho). | O servidor precisa estar no mesmo PC/rede que alcança o aparelho; verifique o IP salvo em `greeplus.json`. |
 | Porta 7000 ocupada | Feche outros servidores locais (Home Assistant, emulador) ou use `--port` para o emulador. |
+| "Não é possível salvar o atalho ... Startup" | Versões antigas montavam o caminho com `%APPDATA%`. Atualize o projeto e rode `INICIAR-COM-O-WINDOWS.bat` de novo; ele pergunta as pastas ao Windows. Manual: `Win+R` → `shell:startup` → novo atalho para `wscript.exe "<pasta>\servidor-oculto.vbs"`. |
 | Windows bloqueia a busca | Libere o Python no firewall do Windows (Redes privadas), ou conecte por IP. |
 | Temperatura em °F | O aparelho está configurado em Fahrenheit; ajuste a unidade no controle remoto. A interface avisa. |
 
@@ -231,6 +238,7 @@ greeplus/
   webui.html            interface web (HTML/CSS/JS sem framework)
   emulator.py           aparelho Gree falso para testes/demonstração
 tests/                  testes: vetores AES/GCM, pacotes, UDP real, CLI e HTTP
+*.bat / *.ps1           atalhos de Windows: iniciar, demo, firewall, diagnóstico, autostart
 PROTOCOL.md             documentação técnica do protocolo
 ```
 

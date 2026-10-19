@@ -4,11 +4,6 @@ cd /d "%~dp0"
 title Gree+ no PC - iniciar junto com o Windows
 color 0B
 
-set "PASTA=%~dp0"
-set "VBS=%PASTA%servidor-oculto.vbs"
-set "INICIAR=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
-set "AREA=%USERPROFILE%\Desktop"
-
 echo ============================================================
 echo    DEIXAR O GREE+ PRONTO SEMPRE QUE LIGAR O PC
 echo ============================================================
@@ -18,34 +13,47 @@ echo    1. criar um atalho na pasta "Inicializar" do Windows
 echo       (o servidor sobe escondido, sem janela);
 echo    2. criar um atalho "Abrir Gree+" na Area de Trabalho.
 echo.
-echo  Voce pode desfazer depois rodando REMOVER-DA-INICIACAO.bat
+echo  Para desfazer depois: REMOVER-DA-INICIACAO.bat
 echo.
 pause
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%PASTA%criar-atalho.ps1" -Target "wscript.exe" -Arguments "\"%VBS%\"" -WorkDir "%PASTA%" -Shortcut "%INICIAR%\GreePlus.lnk"
-
-powershell -NoProfile -ExecutionPolicy Bypass -File "%PASTA%criar-atalho.ps1" -Target "%~dp0ABRIR-CONTROLE.bat" -WorkDir "%PASTA%" -Shortcut "%AREA%\Abrir Gree+.lnk"
-
-if exist "%INICIAR%\GreePlus.lnk" (
-  echo.
-  echo  Pronto! O servidor inicia junto com o Windows.
-) else (
-  echo.
-  echo  Nao consegui criar o atalho de inicializacao.
-  echo  Tente rodar este arquivo com o botao direito -^> Executar como administrador.
-)
-
-if exist "%AREA%\Abrir Gree+.lnk" (
-  echo  Atalho "Abrir Gree+" criado na Area de Trabalho.
-)
-
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0instalar-inicializacao.ps1"
+set "RESULTADO=%ERRORLEVEL%"
 echo.
-echo  Testando agora...
-start "" wscript.exe "%VBS%"
+if not "%RESULTADO%"=="0" goto :manual
+
+echo  Testando agora: o navegador vai abrir em instantes...
+start "" wscript.exe "%~dp0servidor-oculto.vbs"
 timeout /t 4 /nobreak >nul
 start "" "http://localhost:8080/"
 echo.
-echo  Se o navegador abriu com o controle, esta funcionando.
+echo  Pronto. Daqui pra frente: ligar o PC e abrir o atalho "Abrir Gree+".
+echo.
+
+if exist "%~dp0mover-para-C.ps1" (
+  choice /c SN /n /m "Mover o projeto para C:\GreePlus (recomendado)? [S/N] "
+  if errorlevel 2 goto :fim
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0mover-para-C.ps1"
+)
+
+:fim
 echo.
 pause
-endlocal
+exit /b 0
+
+:manual
+echo ------------------------------------------------------------
+echo  Nao consegui criar os atalhos automaticamente.
+echo.
+echo  Faca na mao (30 segundos):
+echo    1. Aperte Win+R e digite:  shell:startup
+echo    2. Botao direito na pasta que abrir -^> Novo -^> Atalho
+echo    3. Em "local do item" cole exatamente o texto abaixo:
+echo.
+echo       wscript.exe "%~dp0servidor-oculto.vbs"
+echo.
+echo    4. Clique em Avancar, de o nome GreePlus e clique em Concluir.
+echo ------------------------------------------------------------
+echo.
+pause
+exit /b 1
