@@ -55,10 +55,12 @@ const replica = {
     const erro = document.getElementById('login-erro');
     const btn = document.getElementById('btn-login');
     if (!cpf || !senha) { erro.textContent='Preencha CPF e senha'; erro.classList.remove('hidden'); return; }
+    const cpfNum = cpf.replace(/\D/g,'');
+    if (cpfNum.length !== 11) { erro.textContent='CPF deve ter 11 dígitos (só números). Ex: 88339211315'; erro.classList.remove('hidden'); return; }
     btn.disabled = true; btn.textContent = 'Clonando...'; erro.classList.add('hidden');
     try {
-      const r = await API.post('/api/auth/login', { cpf, senha });
-      localStorage.setItem('cpf', cpf);
+      const r = await API.post('/api/auth/login', { cpf: cpfNum, senha });
+      localStorage.setItem('cpf', cpfNum);
       localStorage.setItem('senha', senha);
       if (url) localStorage.setItem('cfg-url', url);
       this.logado = true;
@@ -67,8 +69,14 @@ const replica = {
       await this.renderComandos();
       this.toast(`Bem-vindo! Site clonado: ${r.turmas?.length||1} turmas`, 'success');
     } catch (e) {
-      erro.textContent = e.message || 'Falha no login. Verifique CPF/senha.';
+      let msg = e.message || 'Falha no login. Verifique CPF/senha.';
+      // se for erro de rede do preview, explica
+      if (e.message && (e.message.includes('Preview online') || e.message.includes('LOCALMENTE') || e.message.includes('503'))) {
+        msg = 'Preview online bloqueado (normal). Rode no seu PC: feche esta aba, abra INICIAR.bat no seu PC, acesse http://localhost:3000/replica.html e faça login lá — vai funcionar. Ou clique "Continuar sem login" para testar agora.';
+      }
+      erro.innerHTML = msg + '<br><small style="color:#64748b">Dica: CPF sem pontos/traço, senha igual do EduGestão. Se insistir, clique em Continuar sem login para usar modo local.</small>';
       erro.classList.remove('hidden');
+      console.error('login erro', e);
     } finally { btn.disabled = false; btn.textContent = 'Entrar e clonar site →'; }
   },
   usarModoLocal() {

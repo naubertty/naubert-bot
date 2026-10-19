@@ -251,26 +251,40 @@ const SESSIONS = new Map(); // memória: cpf -> {cpf, logadoEm, turmas, discipli
 app.post('/api/auth/login', async (req, res) => {
   const { cpf, senha } = req.body;
   if (!cpf || !senha) return res.status(400).json({ error: 'CPF e senha obrigatórios' });
+  // valida formato
+  const cpfLimpo = cpf.replace(/\D/g,'');
+  if (cpfLimpo.length !== 11) return res.status(400).json({ error: 'CPF deve ter 11 dígitos. Ex: 88339211315' });
+  if (senha.length < 3) return res.status(400).json({ error: 'Senha muito curta' });
   try {
     const { EduGestaoClient } = await import('./services/edugestaoClient.js');
     const client = new EduGestaoClient({ cpf, senha, headless: true });
     await client.login();
     const info = await client.getTurmasEDisciplinas();
-    // tenta também pegar registros reais para clone fiel
     let registrosReais = [];
     try { registrosReais = await client.getRegistrosReais(); } catch {}
     await client.close();
 
     const sess = { cpf, logadoEm: new Date().toISOString(), turmas: info.turmas, disciplinas: info.disciplinas, registrosClonados: registrosReais.length };
     SESSIONS.set(cpf, sess);
-    // persiste em disco para sobreviver restart
     try {
       const p = path.join(DATA_DIR, `session-${cpf}.json`);
       fs.writeFileSync(p, JSON.stringify(sess, null, 2));
     } catch {}
     res.json({ ok: true, message: 'Login realizado! Site clonado.', clone: registrosReais.length > 0, ...info, sess });
   } catch (e) {
-    res.status(401).json({ ok: false, error: e.message });
+    console.error('[login] erro', e.message);
+    // detecta erro de rede - sandbox não tem acesso ao EduGestão
+    const msg = e.message || '';
+    const isNetwork = /não foi possível acessar|ENOTFOUND|ECONNREFUSED|SSL_|timeout|ETIMEDOUT|fetch failed/i.test(msg);
+    if (isNetwork) {
+      return res.status(503).json({
+        ok: false,
+        error: 'Preview online sem acesso ao EduGestão (restrição de rede). Rode LOCALMENTE: clique INICIAR.bat no seu PC e faça login por lá — vai funcionar. Ou use "Continuar sem login" para testar.',
+        code: 'NETWORK_RESTRICTED',
+        hint: 'LOCAL_ONLY'
+      });
+    }
+    res.status(401).json({ ok: false, error: msg });
   }
 });
 app.get('/api/auth/status', (req, res) => {

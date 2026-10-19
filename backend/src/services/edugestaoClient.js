@@ -9,13 +9,125 @@ export class EduGestaoClient {
   constructor({cpf,senha,headless=true,slowMo=0}={}){ this.cpf=cpf||process.env.EDUGESTAO_CPF; this.senha=senha||process.env.EDUGESTAO_SENHA; this.headless=headless; this.slowMo=slowMo; this.browser=null; this.context=null; this.page=null; this.logged=false; }
   async init(){ if(this.browser) return; this.browser=await chromium.launch({headless:this.headless,slowMo:this.slowMo}); this.context=await this.browser.newContext({viewport:{width:1366,height:768},userAgent:'Mozilla/5.0',locale:'pt-BR',timezoneId:'America/Sao_Paulo'}); this.page=await this.context.newPage(); this.page.setDefaultTimeout(30000); }
   async close(){ if(this.browser){ await this.browser.close(); this.browser=null; this.context=null; this.page=null; } }
-  async login(){ await this.init(); const page=this.page; await page.goto(`${BASE_URL}/auth`,{waitUntil:'networkidle'}); if(page.url().includes('/professor')){ this.logged=true; return true; }
-    const cpfSelectors=['input[name="cpf"]','input[placeholder*="CPF" i]','input[type="text"]','#cpf']; const senhaSelectors=['input[name="password"]','input[name="senha"]','input[type="password"]','#senha','#password']; const btnSelectors=['button:has-text("Entrar")','button[type="submit"]','input[type="submit"]'];
-    let cpfFilled=false; for(const sel of cpfSelectors){ try{await page.waitForSelector(sel,{timeout:3000}); await page.fill(sel,this.cpf); cpfFilled=true; break;}catch{} } if(!cpfFilled) throw new Error('Campo CPF não encontrado');
-    let senhaFilled=false; for(const sel of senhaSelectors){ try{ await page.fill(sel,this.senha); senhaFilled=true; break;}catch{} } if(!senhaFilled) throw new Error('Campo senha não encontrado');
-    let clicked=false; for(const sel of btnSelectors){ try{ const el=page.locator(sel).first(); if(await el.isVisible({timeout:2000})){ await el.click(); clicked=true; break; } }catch{} } if(!clicked) await page.keyboard.press('Enter');
-    await page.waitForLoadState('networkidle',{timeout:15000}); const url=page.url(); if(url.includes('/auth') && (await page.locator('text=CPF').count()>0)){ const err=await page.locator('.alert, .error, [role="alert"]').first().textContent().catch(()=> ''); throw new Error('Falha no login: '+(err||'verifique CPF/senha')); }
-    this.logged=true; try{ const storage=await this.context.storageState(); const dir=path.join(__dirname,'../../../data/sessions'); fs.mkdirSync(dir,{recursive:true}); fs.writeFileSync(path.join(dir,'session.json'),JSON.stringify(storage,null,2)); }catch{} return true;
+  async login(){
+    await this.init();
+    const page=this.page;
+    try{
+      await page.goto(`${BASE_URL}/auth`,{waitUntil:'domcontentloaded',timeout:20000});
+    }catch(e){
+      // network error - likely sandbox restriction
+      throw new Error(`Não foi possível acessar ${BASE_URL}/auth : ${e.message}. Se está testando no preview online, rode LOCALMENTE com INICIAR.bat no seu PC para login real funcionar.`);
+    }
+    // se já estiver logado, vai direto pra /professor
+    await page.waitForTimeout(1500);
+    if(page.url().includes('/professor') || page.url().includes('/calendario') || page.url().includes('/diario')){
+      this.logged=true; return true;
+    }
+    // tenta achar campos - EduGestão usa CPF e Senha
+    const cpfSelectors=['input[name="cpf"]','input[name="login"]','input[placeholder*="CPF" i]','input[type="text"]','#cpf','input[name="username"]'];
+    const senhaSelectors=['input[name="password"]','input[name="senha"]','input[type="password"]','#senha','#password','input[name="pass"]'];
+    const btnSelectors=['button:has-text("Entrar")','button:has-text("Acessar")','button[type="submit"]','input[type="submit"]','button:has-text("Login")'];
+    // espera qualquer input aparecer
+    let foundInput = false;
+    for(let i=0;i<4;i++){
+      for(const sel of cpfSelectors){
+        try{ if(await page.locator(sel).first().isVisible({timeout:800})){ foundInput=true; break; } }catch{}
+      }
+      if(foundInput) break;
+      await page.waitForTimeout(700);
+    }
+    if(!foundInput){
+      // salva html/screenshot para debug
+      try{
+        const dir=path.join(__dirname,'../../../data/logs'); fs.mkdirSync(dir,{recursive:true});
+        const html=await page.content(); fs.writeFileSync(path.join(dir,`login-${Date.now()}-page.html`), html);
+        await page.screenshot({path:path.join(dir,`login-${Date.now()}-fail.png`),fullPage:true});
+      }catch{}
+      throw new Error('Página de login não carregou corretamente (campos CPF não encontrados). O site pode estar fora do ar ou bloqueando acesso do preview. Rode localmente com INICIAR.bat.');
+    }
+    let cpfFilled=false;
+    for(const sel of cpfSelectors){
+      try{
+        const el=page.locator(sel).first();
+        if(await el.isVisible({timeout:1500})){
+          await el.click({timeout:2000});
+          await el.fill('', {timeout:2000});
+          await page.waitForTimeout(300);
+          await el.fill(this.cpf, {timeout:3000});
+          // confirma que preencheu
+          const v=await el.inputValue().catch(()=> '');
+          if(v && v.replace(/\D/g,'').length>=5) { cpfFilled=true; break; }
+        }
+      }catch{}
+    }
+    if(!cpfFilled) throw new Error('Não consegui preencher o CPF. Tente novamente ou use o modo local.');
+    let senhaFilled=false;
+    for(const sel of senhaSelectors){
+      try{
+        const el=page.locator(sel).first();
+        if(await el.isVisible({timeout:1500})){
+          await el.click();
+          await el.fill(this.senha, {timeout:3000});
+          senhaFilled=true; break;
+        }
+      }catch{}
+    }
+    if(!senhaFilled) throw new Error('Não consegui preencher a senha.');
+    // clica Entrar
+    let clicked=false;
+    for(const sel of btnSelectors){
+      try{
+        const el=page.locator(sel).first();
+        if(await el.isVisible({timeout:1500})){
+          await el.click({timeout:3000});
+          clicked=true; break;
+        }
+      }catch{}
+    }
+    if(!clicked){
+      await page.keyboard.press('Enter').catch(()=>{});
+    }
+    // espera navegar
+    try{ await page.waitForLoadState('networkidle',{timeout:15000}); }catch{}
+    await page.waitForTimeout(2000);
+    const url=page.url();
+    // sucesso se saiu de /auth
+    if(!url.includes('/auth') || url.includes('/professor') || url.includes('/calendario')){
+      this.logged=true;
+      try{
+        const storage=await this.context.storageState();
+        const dir=path.join(__dirname,'../../../data/sessions');
+        fs.mkdirSync(dir,{recursive:true});
+        fs.writeFileSync(path.join(dir,'session.json'),JSON.stringify(storage,null,2));
+      }catch{}
+      return true;
+    }
+    // ainda em /auth - pega erro da página
+    let erroMsg='';
+    try{
+      // procura mensagens de erro comuns
+      const alertas = await page.locator('.alert, .alert-danger, .alert-warning, .error, [role="alert"], .invalid-feedback, .text-danger').all();
+      for(const a of alertas){
+        if(await a.isVisible().catch(()=>false)){
+          const t=await a.textContent().catch(()=> '');
+          if(t && t.trim().length>3) { erroMsg=t.trim(); break; }
+        }
+      }
+      // se não achou, tenta toast
+      if(!erroMsg){
+        const toast=await page.locator('.toast, .swal2-html-container, .modal-body').first().textContent().catch(()=> '');
+        if(toast && toast.trim().length>3) erroMsg=toast.trim();
+      }
+    }catch{}
+    // salva evidência
+    try{
+      const dir=path.join(__dirname,'../../../data/logs'); fs.mkdirSync(dir,{recursive:true});
+      await page.screenshot({path:path.join(dir,`login-falha-${Date.now()}.png`),fullPage:true});
+    }catch{}
+    if(erroMsg){
+      throw new Error(`Falha no login: ${erroMsg}`);
+    }
+    throw new Error('Falha no login: CPF ou senha inválidos. Verifique e tente novamente. Se o site estiver fora do ar, use modo local.');
   }
   async ensureLogged(){ if(!this.logged) await this.login(); }
   async getTurmasEDisciplinas(){ await this.ensureLogged(); const page=this.page; const urls=[`${BASE_URL}/professor/diario`,`${BASE_URL}/professor/calendario`,`${BASE_URL}/professor`]; for(const u of urls){ try{ await page.goto(u,{waitUntil:'networkidle',timeout:15000}); if(await page.locator('text=Diário de Classe').count()>0) break; }catch{} }
