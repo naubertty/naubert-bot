@@ -165,7 +165,7 @@ sem depender do aparelho.
 | `Sem resposta` no `status` | A chave mudou (o app Gree+ foi usado para reparear) ou outro celular assumiu o controle. Rode `bind` de novo. |
 | `bind` funciona, mas comandos não | Alguns modelos usam a geração **v2**; force com `--protocol v2`. |
 | A busca acha, mas "Conectar" falha | Firmwares novos (ex.: **V3.4.M**) só aceitam o pareamento na mesma sessão UDP do scan. Atualize o projeto (baixe o ZIP de novo) — o fluxo já faz scan + bind no mesmo socket. Se continuar, rode `DIAGNOSTICO.bat` e envie o `diagnostico.txt`. |
-| Interface web abre, mas não conecta | O servidor precisa estar no mesmo PC/rede que alcança o aparelho; verifique o IP salvo em `greeplus.json`. |
+| Interface web abre, mas não conecta | Feche o app GREE+ no celular (ele pode estar segurando a conexão com o aparelho). | O servidor precisa estar no mesmo PC/rede que alcança o aparelho; verifique o IP salvo em `greeplus.json`. |
 | Porta 7000 ocupada | Feche outros servidores locais (Home Assistant, emulador) ou use `--port` para o emulador. |
 | Windows bloqueia a busca | Libere o Python no firewall do Windows (Redes privadas), ou conecte por IP. |
 | Temperatura em °F | O aparelho está configurado em Fahrenheit; ajuste a unidade no controle remoto. A interface avisa. |

@@ -502,36 +502,54 @@ class GreeClient:
         return raw_key.decode("ascii", "replace")
 
     def _prime_session(self, sock: socket.socket) -> None:
-        """Envia um scan pelo mesmo socket e aproveita a resposta para
-        confirmar MAC e geração do protocolo."""
-        try:
-            sock.sendto(json.dumps(build_scan()).encode(), (self.info.ip, self.info.port))
-            _LOGGER.debug("session prime: scan -> %s:%s", self.info.ip, self.info.port)
-        except OSError as exc:
-            _LOGGER.debug("session prime failed: %s", exc)
-            return
+        """Envia scan pelo mesmo socket e confirma MAC/IP/protocolo.
 
-        deadline = time.monotonic() + self.probe_timeout
+        Alguns firmwares (ex.: V3.4.M) só respondem ao scan em **broadcast** e
+        recusam o bind que não venha da mesma sessão UDP. Por isso mandamos o
+        scan para o IP do aparelho e também para os endereços de broadcast.
+        """
+        request = json.dumps(build_scan()).encode()
+        destinations = [self.info.ip] + [addr for addr in broadcast_targets() if addr != self.info.ip]
+        for destination in destinations:
+            try:
+                sock.sendto(request, (destination, self.info.port))
+                _LOGGER.debug("session prime: scan -> %s:%s", destination, self.info.port)
+            except OSError as exc:
+                _LOGGER.debug("session prime para %s falhou: %s", destination, exc)
+
+        expected_mac = self.info.mac
+        seen: List[DeviceInfo] = []
+        deadline = time.monotonic() + max(self.probe_timeout, 2.0)
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                return
+                break
             sock.settimeout(remaining)
             try:
                 reply, address = sock.recvfrom(65535)
             except socket.timeout:
-                return
+                break
             except OSError:
-                return
+                break
             try:
                 packet = decode_packet(reply, CipherV1(GENERIC_KEY_V1), allow_key=CipherV2(GENERIC_KEY_V2))
             except Exception:  # noqa: BLE001 - pacotes alheios são esperados
                 continue
             info = _device_from_packet(packet, address)
-            if info:
-                self._absorb(info)
-                _LOGGER.debug("session prime: %s respondeu (%s)", info.mac, info.protocol)
-                return
+            if not info:
+                continue
+            seen.append(info)
+            if expected_mac and info.mac != expected_mac:
+                continue
+            self._absorb(info)
+            # O aparelho respondeu deste endereço: é para cá que o bind vai.
+            self.info.ip = info.ip
+            _LOGGER.debug("session prime: %s respondeu de %s (%s)", info.mac, info.ip, info.protocol)
+            return
+
+        if seen and not expected_mac:
+            self._absorb(seen[0])
+            self.info.ip = seen[0].ip
 
     def _bind_on_socket(self, sock: socket.socket) -> Tuple[Dict[str, Any], str]:
         preferred = self.protocol if self.protocol in ("v1", "v2") else "v1"

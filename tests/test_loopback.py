@@ -147,3 +147,25 @@ def test_icmp_ping_loopback():
     from greeplus.client import icmp_ping
 
     assert icmp_ping("127.0.0.1") in (True, None)
+
+
+def test_prime_updates_stale_ip_from_broadcast_reply(emulator, monkeypatch):
+    """Se o IP salvo estiver errado, o scan da sessão corrige pelo MAC."""
+    import socket as socket_module
+
+    import greeplus.client as client_module
+
+    device = scan(["127.0.0.1"], timeout=1.5, port=emulator.port)[0]
+    client = GreeClient("192.0.2.10", port=emulator.port, mac=device.mac, protocol=device.protocol)
+    client.probe_timeout = 1.0
+    # simula um broadcast que chega ao aparelho do teste
+    monkeypatch.setattr(client_module, "broadcast_targets", lambda: ["127.0.0.1"])
+
+    sock = socket_module.socket(socket_module.AF_INET, socket_module.SOCK_DGRAM)
+    try:
+        client._prime_session(sock)
+    finally:
+        sock.close()
+
+    assert client.info.ip == "127.0.0.1"
+    assert client.bind() == emulator.key.decode()
