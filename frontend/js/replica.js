@@ -130,12 +130,16 @@ const replica = {
 
   async refresh() {
     try {
-      const [regs, prog] = await Promise.all([
+      const [regs, estado] = await Promise.all([
         API.get('/api/registros').catch(()=>[]),
-        API.get('/api/progresso').catch(()=>null)
+        API.get('/api/replica/estado').catch(()=>null)
       ]);
       this.registros = regs;
-      if (prog) this.renderMeta(prog);
+      if (estado) this.renderMeta(estado);
+      else {
+        const prog = await API.get('/api/progresso').catch(()=>null);
+        if(prog) this.renderMeta({ ...prog, tabela: null });
+      }
       if (this.disciplina) this.renderRegistros();
       else this.showEmpty();
     } catch (e) { console.error(e) }
@@ -164,17 +168,48 @@ const replica = {
     } catch(e){ grid.innerHTML = '<p style="color:#94a3b8">Erro ao carregar</p>' }
   },
 
-  renderMeta(prog) {
-    const p = prog.progresso || prog;
-    const geral = p.progressoGeral ?? 30;
+  renderMeta(estado) {
+    // estado vem de /api/replica/estado (fiel) ou /api/progresso (fallback)
+    const tabela = estado.tabela;
+    const prog = estado.linhas ? { linhas: estado.linhas, ...estado } : estado;
+    const geral = estado.progressoGeral ?? estado.progresso?.progressoGeral ?? prog.progressoGeral ?? 0;
+    const totalAulas = estado.totalAulas ?? estado.totalRealizado ?? 0;
     document.getElementById('progress-fill').style.width = geral + '%';
     document.getElementById('progress-text').textContent = `Progresso geral: ${geral}%`;
-    document.getElementById('badge-registros').textContent = `${p.totalRealizado||188} registros no ano`;
+    document.getElementById('badge-registros').textContent = `${totalAulas} aulas • ${estado.totalRegistros ?? estado.totalRealizado ?? 0} dias no ano`;
+    document.getElementById('badge-calendario').textContent = `Calendário 2026: 200 dias letivos`;
 
     const tbody = document.getElementById('meta-tbody');
-    if (!tbody || !p.linhas) return;
+    if (!tbody) return;
+    // usa tabela fiel se disponível
+    if (tabela && Array.isArray(tabela)) {
+      tbody.innerHTML = '';
+      const ordem = ['Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+      for (const row of tabela) {
+        const tr = document.createElement('tr');
+        let tds = `<td style="text-align:left;font-weight:600">${row.disciplina}</td>`;
+        for (const m of ordem) {
+          const v = row.meses[m] || 0;
+          let cls='gray', txt='-';
+          if (v>0) { cls = v>=5?'green': v>=3?'green':'orange'; txt=v; }
+          // laranja para parcial (como print: valores pequenos em laranja)
+          if (row.progresso !== undefined && v>0 && v<3) cls='orange';
+          tds += `<td><span class="pill ${cls}">${txt}</span></td>`;
+        }
+        const total = row.meses.totalReal ?? row.progresso ?? 0;
+        // totalReal já é soma das aulas; meta está em row.meses.totalMeta
+        const meta = row.meses.totalMeta ?? 0;
+        // exibe como 22/78 etc (igual print oficial)
+        const realExibir = row.meses.totalReal !== undefined ? row.meses.totalReal : total;
+        tds += `<td><strong>${realExibir}<span style="color:#94a3b8">/${meta}</span></strong></td>`;
+        tr.innerHTML = tds;
+        tbody.appendChild(tr);
+      }
+      return;
+    }
+    // fallback antigo (se tabela não veio)
+    if (!prog.linhas) return;
     tbody.innerHTML = '';
-    // mock exato do print para fidelidade quando dados locais ainda poucos
     const mock = {
       'Arte':[6,8,6,2,0,0,0,0,0,0,0],
       'Ciências':[5,8,8,2,0,0,0,0,0,0,0],
@@ -183,12 +218,12 @@ const replica = {
       'Língua Portuguesa':[12,23,20,5,0,0,0,0,0,0,0],
       'Matemática':[12,20,23,5,0,0,0,0,0,0,0],
     };
-    for (const l of p.linhas) {
+    for (const l of prog.linhas) {
       const tr = document.createElement('tr');
       let tds = `<td>${l.disciplina}</td>`;
       const meses = mock[l.disciplina] || [0,0,0,0,0,0,0,0,0,0,0];
       for (let i=0;i<11;i++) {
-        const v = (p.totalRealizado < 20 && mock[l.disciplina]) ? meses[i] : (i===3 ? Math.min(l.realizado,2) : 0);
+        const v = (prog.totalRealizado < 20 && mock[l.disciplina]) ? meses[i] : (i===3 ? Math.min(l.realizado,2) : 0);
         let cls='gray', txt='-';
         if (v>0) { cls = v>=3?'green':'orange'; txt=v; }
         tds += `<td><span class="pill ${cls}">${txt}</span></td>`;
