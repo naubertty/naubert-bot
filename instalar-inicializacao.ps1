@@ -8,8 +8,10 @@ if ([string]::IsNullOrWhiteSpace($pasta)) {
 }
 if ($pasta) { $pasta = $pasta.TrimEnd([char]92) }   # remove "\" do final
 
-$vbs   = Join-Path $pasta "servidor-oculto.vbs"
-$abrir = Join-Path $pasta "ABRIR-CONTROLE.bat"
+$vbs      = Join-Path $pasta "servidor-oculto.vbs"
+$iniciar  = Join-Path $pasta "GreePlus.vbs"          # atalho do usuario: sem console
+$icone    = Join-Path $pasta "greeplus.ico"
+$iconePng = Join-Path $pasta "greeplus.png"
 
 Write-Host ""
 Write-Host "Pasta do projeto : $pasta"
@@ -18,9 +20,14 @@ if (-not (Test-Path -LiteralPath $vbs)) {
     Write-Host "ERRO: servidor-oculto.vbs nao encontrado nesta pasta."
     exit 1
 }
-if (-not (Test-Path -LiteralPath $abrir)) {
-    Write-Host "ERRO: ABRIR-CONTROLE.bat nao encontrado nesta pasta."
+if (-not (Test-Path -LiteralPath $iniciar)) {
+    Write-Host "ERRO: GreePlus.vbs nao encontrado nesta pasta."
     exit 1
+}
+if (Test-Path -LiteralPath $icone) {
+    Write-Host "Icone            : greeplus.ico (aplicado nos atalhos)"
+} else {
+    Write-Host "AVISO: greeplus.ico nao encontrado; os atalhos terao o icone padrao."
 }
 
 $startup = [Environment]::GetFolderPath([Environment+SpecialFolder]::Startup)
@@ -65,6 +72,7 @@ try {
     $atalho.WorkingDirectory = $pasta
     $atalho.WindowStyle = 7
     $atalho.Description = "Gree+ no PC - inicia o servidor local"
+    if (Test-Path -LiteralPath $icone) { $atalho.IconLocation = "$icone,0" }
     $atalho.Save()
     if (Test-Path -LiteralPath $lnkIniciar) {
         Write-Host "OK: atalho de inicializacao criado"
@@ -97,17 +105,33 @@ if ($desktop -ne "") {
     try {
         $lnkAbrir = Join-Path $desktop "Abrir Gree+.lnk"
         $shell2 = New-Object -ComObject WScript.Shell
+        # wscript.exe abre o GreePlus.vbs: sem janela preta e com icone proprio.
         $atalho2 = $shell2.CreateShortcut($lnkAbrir)
-        $atalho2.TargetPath = $abrir
+        $atalho2.TargetPath = $wscript
+        $atalho2.Arguments = '"' + $iniciar + '"'
         $atalho2.WorkingDirectory = $pasta
         $atalho2.WindowStyle = 7
         $atalho2.Description = "Abre o controle do ar-condicionado"
+        if (Test-Path -LiteralPath $icone) { $atalho2.IconLocation = "$icone,0" }
         $atalho2.Save()
         if (Test-Path -LiteralPath $lnkAbrir) {
-            Write-Host "OK: atalho 'Abrir Gree+' criado na Area de Trabalho"
+            Write-Host "OK: atalho 'Abrir Gree+' criado na Area de Trabalho (com icone)"
         } else {
             Write-Host "AVISO: nao consegui criar o atalho da Area de Trabalho"
         }
+
+        # Atalho opcional na pasta do projeto, para fixar na barra de tarefas.
+        $lnkPasta = Join-Path $pasta "Gree+ (abrir).lnk"
+        $atalho3 = $shell2.CreateShortcut($lnkPasta)
+        $atalho3.TargetPath = $wscript
+        $atalho3.Arguments = '"' + $iniciar + '"'
+        $atalho3.WorkingDirectory = $pasta
+        $atalho3.WindowStyle = 7
+        $atalho3.Description = "Abre o controle do ar-condicionado"
+        if (Test-Path -LiteralPath $icone) { $atalho3.IconLocation = "$icone,0" }
+        $atalho3.Save()
+        Write-Host "OK: atalho 'Gree+ (abrir).lnk' criado na pasta do projeto"
+        Write-Host "    (arraste para a barra de tarefas ou Menu Iniciar, se quiser)"
     } catch {
         Write-Host "AVISO: nao consegui criar o atalho da Area de Trabalho: $($_.Exception.Message)"
     }
@@ -120,6 +144,10 @@ if ($pasta -like "*\Downloads\*") {
     Write-Host "O Windows pode limpar essa pasta; nesse caso os atalhos param de funcionar."
     Write-Host "Recomendado: mover a pasta para C:\GreePlus (o menu oferece isso)."
 }
+
+Write-Host ""
+Write-Host "Dica: se preferir um .exe de verdade (com icone no proprio arquivo),"
+Write-Host "rode:  powershell -ExecutionPolicy Bypass -File criar-exe.ps1"
 
 Write-Host ""
 if ($falhas -eq 0) {

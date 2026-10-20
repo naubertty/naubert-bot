@@ -1,4 +1,4 @@
-' Inicia o servidor do Gree+ sem abrir janela.
+' Inicia o servidor do Gree+ sem abrir janela nenhuma.
 Dim fso, shell, pasta, alvo
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set shell = CreateObject("WScript.Shell")
@@ -9,4 +9,4 @@ If Not fso.FileExists(alvo) Then
     WScript.Quit 1
 End If
 shell.CurrentDirectory = pasta
-shell.Run "cmd /c """ & alvo & """", 0, False
+shell.Run "cmd /c """ & alvo & """ oculto", 0, False

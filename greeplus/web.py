@@ -297,6 +297,12 @@ def make_handler(session: DeviceSession):
             if path in ("/", "/index.html"):
                 self._serve_index()
                 return
+            if path == "/favicon.png":
+                self._serve_file("greeplus.png", "image/png")
+                return
+            if path == "/favicon.ico":
+                self._serve_file("greeplus.ico", "image/x-icon")
+                return
             if path == "/api/health":
                 self._send_json({"ok": True, "uptime": time.time()})
                 return
@@ -371,13 +377,16 @@ def make_handler(session: DeviceSession):
         # -- static ----------------------------------------------------
 
         def _serve_index(self) -> None:
-            file = WEB_DIR / "webui.html"
+            self._serve_file("webui.html", "text/html; charset=utf-8")
+
+        def _serve_file(self, name: str, content_type: str) -> None:
+            file = WEB_DIR / name
             if not file.is_file():
-                self._send_error_json("webui.html não encontrado", 500)
+                self._send_error_json(f"{name} não encontrado", 404)
                 return
             body = file.read_bytes()
             self.send_response(HTTPStatus.OK)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.end_headers()

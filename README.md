@@ -27,6 +27,7 @@ dependências externas.
 | `DIAGNOSTICO.bat` | se algo falhar: testa a rede, o ping, o broadcast, varre a rede e gera `diagnostico.txt` |
 | `LIBERAR-FIREWALL.bat` | libera a porta UDP 7000 no firewall do Windows (pede permissão de administrador) |
 | `INICIAR-COM-O-WINDOWS.bat` | roda uma vez: deixa o controle pronto sempre que ligar o PC |
+| `criar-exe.ps1` | opcional: gera `GreePlus.exe` com o ícone embutido (precisa de internet) |
 | `ABRIR-CONTROLE.bat` | abre a interface (sobe o servidor escondido se preciso) |
 | `REMOVER-DA-INICIACAO.bat` | desfaz a inicialização automática |
 
@@ -90,6 +91,42 @@ Recursos pensados para esse uso:
 
 > O servidor escuta em `0.0.0.0:8080` (acessível por outros aparelhos da casa). Se preferir
 > só no próprio PC, edite `servidor.bat` e troque `--host 0.0.0.0` por `--host 127.0.0.1`.
+
+---
+
+## Ícone
+
+O projeto inclui `greeplus.ico` (10 tamanhos, de 16 a 256 px) e `greeplus.png`.
+O `INICIAR-COM-O-WINDOWS.bat` aplica esse ícone automaticamente nos atalhos:
+
+- **Abrir Gree+** na Área de Trabalho — abre via `GreePlus.vbs`, então **sem janela preta**;
+- **GreePlus** na pasta Inicializar (servidor);
+- **Gree+ (abrir).lnk** dentro da pasta do projeto — arraste para a barra de tarefas ou para o
+  Menu Iniciar para ter o ícone lá também.
+
+O favorito do navegador também usa o mesmo ícone (`/favicon.png`).
+
+Para trocar por outro ícone: substitua `greeplus.ico` por um `.ico` seu e rode
+`INICIAR-COM-O-WINDOWS.bat` de novo (ou clique com o botão direito no atalho →
+Propriedades → Alterar ícone).
+
+### Um `.exe` de verdade (opcional)
+
+Se quiser um **executável único** com o ícone no próprio arquivo:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File criar-exe.ps1
+```
+
+Ele instala o PyInstaller na primeira execução (precisa de internet) e gera
+`dist\GreePlus.exe`, com nome, versão e ícone do Windows. Uso:
+
+```
+GreePlus.exe web --demo     teste com aparelho simulado
+GreePlus.exe web            controle normal
+```
+
+Para regenerar o ícone a partir do código: `pip install pillow` e `python tools/make_icon.py`.
 
 ---
 

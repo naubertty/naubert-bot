@@ -28,7 +28,7 @@ greeplus = "greeplus.cli:main"
 packages = ["greeplus"]
 
 [tool.setuptools.package-data]
-greeplus = ["webui.html"]
+greeplus = ["webui.html", "greeplus.png", "greeplus.ico"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -182,3 +182,22 @@ def test_session_recovers_when_ip_changed(emulator, tmp_path, monkeypatch):
     assert payload["connected"] is True
     saved = json.loads(config_file.read_text())
     assert saved["ip"] == "127.0.0.1"
+
+
+def test_favicon_is_served(server):
+    base, _, _ = server
+    import urllib.request
+
+    with urllib.request.urlopen(base + "/favicon.png", timeout=5) as response:
+        body = response.read()
+        assert response.status == 200
+        assert response.headers["Content-Type"] == "image/png"
+        assert body.startswith(b"\x89PNG")
+
+    with urllib.request.urlopen(base + "/favicon.ico", timeout=5) as response:
+        assert response.status == 200
+        assert len(response.read()) > 1000
+
+    with urllib.request.urlopen(base + "/", timeout=5) as response:
+        html = response.read().decode()
+    assert 'rel="icon"' in html
