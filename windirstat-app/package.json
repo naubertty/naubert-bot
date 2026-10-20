@@ -1,0 +1,12 @@
+{
+  "name": "windirstat-rea-desktop",
+  "version": "2.9.3",
+  "description": "WinDirStat 2.9.3 Clean-Room PC Desktop Application (Electron + Local Node + Python Tkinter)",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "node server.mjs --open",
+    "serve": "node server.mjs",
+    "electron": "electron ."
+  },
+  "license": "GPL-3.0-or-later"
+}

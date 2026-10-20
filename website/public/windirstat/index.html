@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WinDirStat 2.9.3 Desktop — Analisador de Disco para PC (REA)</title>
+    <style>
+      :root {
+        --bg: #0b0f17;
+        --panel: #111827;
+        --panel-alt: #1f2937;
+        --border: #334155;
+        --text: #f1f5f9;
+        --muted: #94a3b8;
+        --accent: #38bdf8;
+        --accent-soft: rgba(56, 189, 248, 0.14);
+        --bar: #22c55e;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 16px;
+        background: #0f172a;
+        border-bottom: 1px solid var(--border);
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .brand-badge {
+        background: linear-gradient(135deg, #0284c7, #6366f1);
+        color: #fff;
+        font-weight: 700;
+        padding: 4px 9px;
+        border-radius: 6px;
+        font-size: 12px;
+        letter-spacing: 0.04em;
+      }
+      .brand h1 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .header-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+      }
+      .btn-primary {
+        background: linear-gradient(135deg, #0284c7, #2563eb);
+        color: #fff;
+        border: 1px solid #38bdf8;
+        border-radius: 6px;
+        padding: 5px 11px;
+        font-weight: 600;
+        font-size: 12px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .btn-primary:hover {
+        filter: brightness(1.1);
+      }
+      .btn-download {
+        background: linear-gradient(135deg, #059669, #10b981);
+        color: #fff;
+        border: 1px solid #34d399;
+        border-radius: 6px;
+        padding: 5px 11px;
+        font-weight: 600;
+        font-size: 12px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .pill {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 4px 10px;
+        color: var(--muted);
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px;
+      }
+      .pill strong {
+        color: var(--accent);
+      }
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 16px;
+        background: var(--panel);
+        border-bottom: 1px solid var(--border);
+      }
+      .toolbar label {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      select,
+      button,
+      input[type="text"] {
+        background: var(--panel-alt);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        padding: 4px 8px;
+        font-size: 12px;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:hover:not(:disabled) {
+        border-color: var(--accent);
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+      input[type="range"] {
+        width: 72px;
+        accent-color: var(--accent);
+      }
+      .workspace {
+        display: grid;
+        grid-template-rows: 260px 1fr;
+        height: calc(100vh - 140px);
+        min-height: 540px;
+      }
+      .top-split {
+        display: grid;
+        grid-template-columns: 1.55fr 1fr;
+        border-bottom: 1px solid var(--border);
+        overflow: hidden;
+      }
+      .pane {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        border-right: 1px solid var(--border);
+      }
+      .pane:last-child {
+        border-right: none;
+      }
+      .pane-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 6px 10px;
+        background: #0f172a;
+        border-bottom: 1px solid var(--border);
+        font-weight: 600;
+        font-size: 12px;
+      }
+      .tab-group {
+        display: flex;
+        gap: 4px;
+      }
+      .tab-btn {
+        padding: 3px 9px;
+        border-radius: 4px;
+        font-size: 11.5px;
+      }
+      .tab-btn.active {
+        background: var(--accent-soft);
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .table-scroll {
+        flex: 1;
+        overflow: auto;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+      thead th {
+        position: sticky;
+        top: 0;
+        background: #161f30;
+        color: var(--muted);
+        text-align: left;
+        padding: 5px 8px;
+        border-bottom: 1px solid var(--border);
+        font-weight: 600;
+        z-index: 1;
+      }
+      thead th.num,
+      tbody td.num {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      tbody tr {
+        border-bottom: 1px solid rgba(51, 65, 85, 0.35);
+        cursor: pointer;
+      }
+      tbody tr:hover {
+        background: rgba(255, 255, 255, 0.04);
+      }
+      tbody tr.selected {
+        background: var(--accent-soft);
+      }
+      tbody td {
+        padding: 4px 8px;
+        white-space: nowrap;
+      }
+      .tree-name-cell {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .tree-toggle {
+        padding: 0 4px;
+        font-size: 11px;
+        line-height: 1.2;
+        background: transparent;
+        border: none;
+        color: var(--muted);
+      }
+      .tree-spacer {
+        display: inline-block;
+        width: 16px;
+      }
+      .subtree-bar-wrap {
+        width: 74px;
+        height: 9px;
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 3px;
+        overflow: hidden;
+      }
+      .subtree-bar-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #38bdf8, #22c55e);
+      }
+      .ext-cell {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      .ext-swatch {
+        border-radius: 2px;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+      }
+      .dupe-group-row {
+        background: rgba(250, 204, 21, 0.08);
+      }
+      .muted-path {
+        color: var(--muted);
+        font-size: 11px;
+        margin-left: 6px;
+      }
+      .bottom-split {
+        display: grid;
+        grid-template-columns: 1fr 340px;
+        overflow: hidden;
+      }
+      .treemap-wrap {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        background: #05070b;
+        overflow: hidden;
+      }
+      #treemap-canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        cursor: crosshair;
+      }
+      .dossier-pane {
+        background: var(--panel);
+        border-left: 1px solid var(--border);
+        padding: 10px 12px;
+        overflow-y: auto;
+        font-size: 12px;
+      }
+      .dossier-pane h3 {
+        margin: 8px 0 6px;
+        font-size: 12.5px;
+        color: var(--accent);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .inspector-card {
+        background: #0f172a;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 8px 10px;
+        margin-bottom: 10px;
+      }
+      .inspector-card code {
+        color: #7dd3fc;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      .formula-box {
+        background: #090d16;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 8px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px;
+        color: #cbd5e1;
+        margin-bottom: 8px;
+        overflow-x: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <span class="brand-badge">WinDirStat 2.9.3 PC</span>
+        <h1>Aplicativo Desktop &amp; Analisador de Disco em Tempo Real</h1>
+      </div>
+      <div class="header-actions">
+        <input id="pc-folder-input" type="file" webkitdirectory directory multiple style="display: none" />
+        <button id="btn-pick-pc-folder" class="btn-primary" title="Selecionar e analisar qualquer pasta real do seu PC">
+          📂 Escanear Pasta do Meu PC
+        </button>
+        <a href="/api/download-pc-app" class="btn-download" download="WinDirStat-REA-PC.zip">
+          ⬇ Baixar App para PC (.zip)
+        </a>
+        <button id="btn-export-csv">📊 Exportar CSV</button>
+        <span id="scan-status-pill" class="pill">Pronto · <strong>WinDirStat 2.9.3 Engine</strong></span>
+      </div>
+    </header>
+
+    <div class="toolbar">
+      <label>
+        Origem / Volume:
+        <select id="dataset-select">
+          <option value="windowsSystem">💽 C:\ (Simulação Volume Windows 11 NVMe)</option>
+          <option value="windirstatRepo">📦 windirstat/windirstat v2.9.3 (Árvore Oficial)</option>
+          <option value="scan:/home/user/naubert-bot/src">🔍 Escanear Real: /home/user/naubert-bot/src</option>
+          <option value="scan:/home/user/naubert-bot/docs">🔍 Escanear Real: /home/user/naubert-bot/docs</option>
+          <option value="scan:/home/user/naubert-bot/website">🔍 Escanear Real: /home/user/naubert-bot/website</option>
+        </select>
+      </label>
+
+      <label>
+        Caminho Servidor/PC:
+        <input id="custom-scan-path" type="text" value="/home/user/naubert-bot/src" style="width: 195px" />
+        <button id="btn-scan-path">Escanear</button>
+      </label>
+
+      <label>
+        Modo:
+        <select id="view-mode-select">
+          <option value="treemap">Cushion Treemap (CTreeMap)</option>
+          <option value="sunburst">Sunburst Radial (CSunburst)</option>
+          <option value="flamegraph">FlameGraph (CFlameGraph)</option>
+        </select>
+      </label>
+
+      <label>
+        Preset:
+        <select id="preset-select">
+          <option value="Classic">Classic (B=88%, H=0.38, F=0.91)</option>
+          <option value="Calm">Calm (Squarified, H=0.15)</option>
+          <option value="Flat">Flat (2D Sem Cushion)</option>
+          <option value="Pastel">Pastel (Sat=40%)</option>
+          <option value="HighContrast">HighContrast</option>
+        </select>
+      </label>
+
+      <label>
+        Layout:
+        <select id="opt-style">
+          <option value="Rows">KDirStat (Rows)</option>
+          <option value="Squarified">SequoiaView (Squarified)</option>
+        </select>
+      </label>
+
+      <label>
+        Brilho:
+        <input id="opt-brightness" type="range" min="20" max="100" value="88" />
+        <span id="val-brightness">88%</span>
+      </label>
+
+      <label>
+        Altura (H):
+        <input id="opt-height" type="range" min="0" max="100" value="38" />
+        <span id="val-height">0.38</span>
+      </label>
+
+      <label>
+        Escala (F):
+        <input id="opt-scale" type="range" min="50" max="100" value="91" />
+        <span id="val-scale">0.91</span>
+      </label>
+
+      <label>
+        Luz (Ia):
+        <input id="opt-ambient" type="range" min="0" max="100" value="13" />
+        <span id="val-ambient">13%</span>
+      </label>
+
+      <label><input id="opt-grid" type="checkbox" checked /> Grid</label>
+      <label><input id="opt-ext-labels" type="checkbox" checked /> Ext</label>
+
+      <button id="btn-zoom-out" disabled>⬆ Subir</button>
+      <button id="btn-zoom-reset" disabled>⏮ Raiz (<span id="zoom-path-label">C:\</span>)</button>
+    </div>
+
+    <div class="workspace">
+      <div class="top-split">
+        <div class="pane">
+          <div class="pane-header">
+            <div class="tab-group">
+              <button class="tab-btn active" data-tab="treelist">📁 Directory Tree (`CTreeListControl`)</button>
+              <button class="tab-btn" data-tab="topfiles">🏆 Top Largest Files (`CFileTopControl`)</button>
+              <button class="tab-btn" data-tab="dupes">🔁 Duplicates (`CFileDupeControl`)</button>
+            </div>
+            <span style="color: var(--muted); font-weight: 400">Duplo-clique numa pasta aplica Zoom</span>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name (`COL_NAME`)</th>
+                  <th>Subtree % (`COL_SIZE_PROPORTION`)</th>
+                  <th class="num">%</th>
+                  <th class="num">Physical (`m_sizePhysical`)</th>
+                  <th class="num">Logical (`m_sizeLogical`)</th>
+                  <th class="num">Files</th>
+                  <th class="num">Folders / Modified</th>
+                </tr>
+              </thead>
+              <tbody id="tree-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="pane">
+          <div class="pane-header">
+            <span>🎨 Extension Statistics (`CExtensionListControl`)</span>
+            <span style="color: var(--muted); font-weight: 400">Clique para destacar no Treemap</span>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Extension</th>
+                  <th class="num">Bytes</th>
+                  <th class="num">%</th>
+                  <th class="num">Files</th>
+                </tr>
+              </thead>
+              <tbody id="ext-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="bottom-split">
+        <div class="treemap-wrap">
+          <canvas id="treemap-canvas"></canvas>
+        </div>
+
+        <aside class="dossier-pane">
+          <h3>Inspeção do Item (`CItem`)</h3>
+          <div id="selected-node-info" class="inspector-card"></div>
+
+          <h3>Como Rodar no Seu PC</h3>
+          <div class="formula-box">
+            <strong>Opção 1 — Direto daqui:</strong><br />
+            Clique em <strong>"📂 Escanear Pasta do Meu PC"</strong> no topo para selecionar qualquer pasta do seu computador.<br /><br />
+            <strong>Opção 2 — Pacote Desktop Nativo (.zip):</strong><br />
+            Clique em <strong>"⬇ Baixar App para PC (.zip)"</strong>, extraia no seu PC e execute:<br />
+            • Windows: <code>Iniciar-WinDirStat-Windows.bat</code><br />
+            • Linux/Mac: <code>./iniciar-windirstat-linux-mac.sh</code><br />
+            • Python GUI Nativa: <code>python windirstat_desktop.py</code><br />
+            • Electron/Node: <code>npm start</code>
+          </div>
+
+          <h3>Equações (`TreeMap.cpp`)</h3>
+          <div class="formula-box">
+            <strong>AddRidge &amp; DrawCushion</strong><br />
+            wf = 4*h / W; hf = 4*h / H<br />
+            nx = -(2*s0*(x+0.5) + s2)<br />
+            ny = -(2*s1*(y+0.5) + s3)<br />
+            I = Ia + (1-Ia)*max(0, (nx*lx+ny*ly+lz)/sqrt(nx²+ny²+1))
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
