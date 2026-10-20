@@ -40,11 +40,14 @@ const replica = {
   esconderLogin(sess) {
     document.getElementById('login-overlay').classList.add('hidden');
     document.getElementById('comandos-card').style.display = '';
-    document.getElementById('sync-status').textContent = '● Sincronizado';
     document.getElementById('sync-status').style.color = '#10b981';
     document.getElementById('btn-logout').style.display = '';
+    localStorage.setItem('modo', 'real');
     if (sess) {
-      document.getElementById('sync-status').textContent = `● Clonado • ${sess.turmas?.length||1} turmas`;
+      document.getElementById('sync-status').textContent = `● Clonado • ${sess.turmas?.length||1} turmas • Modo REAL`;
+      document.getElementById('sync-status').title = 'Gerar & Lançar já grava no site oficial';
+    } else {
+      document.getElementById('sync-status').textContent = '● Sincronizado • Modo REAL';
     }
     this.showEmpty();
   },
@@ -62,12 +65,13 @@ const replica = {
       const r = await API.post('/api/auth/login', { cpf: cpfNum, senha });
       localStorage.setItem('cpf', cpfNum);
       localStorage.setItem('senha', senha);
+      localStorage.setItem('modo', 'real');
       if (url) localStorage.setItem('cfg-url', url);
       this.logado = true;
       this.esconderLogin(r);
       await this.refresh();
       await this.renderComandos();
-      this.toast(`Bem-vindo! Site clonado: ${r.turmas?.length||1} turmas`, 'success');
+      this.toast(`Bem-vindo! Site clonado: ${r.turmas?.length||1} turmas • Modo REAL ativado`, 'success');
     } catch (e) {
       let msg = e.message || 'Falha no login. Verifique CPF/senha.';
       // se for erro de rede do preview, explica
@@ -84,6 +88,7 @@ const replica = {
     document.getElementById('comandos-card').style.display = '';
     document.getElementById('sync-status').textContent = '● Modo local (sem clone)';
     document.getElementById('sync-status').style.color = '#f59e0b';
+    localStorage.setItem('modo', 'simulado');
     this.showEmpty();
     this.refresh();
     this.renderComandos();
@@ -93,10 +98,11 @@ const replica = {
     const cpf = localStorage.getItem('cpf');
     API.post('/api/auth/logout', { cpf }).catch(()=>{});
     localStorage.removeItem('cpf'); localStorage.removeItem('senha');
+    localStorage.setItem('modo','simulado');
     this.logado = false;
     document.getElementById('btn-logout').style.display='none';
     this.mostrarLogin();
-    this.toast('Desconectado','info');
+    this.toast('Desconectado • Voltou ao modo local','info');
   },
 
   bindDropdown() {
@@ -276,7 +282,7 @@ const replica = {
   async gerarDia(data) {
     const info = await API.get('/api/calendario/dia/'+data);
     if (!info.letivo) return this.toast('Dia não letivo','error');
-    const modo = localStorage.getItem('modo') || 'simulado';
+    const modo = this.logado ? 'real' : (localStorage.getItem('modo') || 'simulado');
     const previews = info.previews || [];
     const html = `<p>Vai gerar <strong>${previews.length} registro(s)</strong> para <strong>${info.formatBR} (${info.diaSemanaLabel})</strong></p>
       <div style="margin:12px 0">${previews.map(p=> `<div style="border:1px solid #e2e8f0;border-radius:10px;padding:10px;margin-bottom:8px;background:#f8fafc"><strong>${p.disciplina} • ${p.aulas} aula(s) • ${p.bimestre}</strong><p style="margin:6px 0;font-size:13px">${p.conteudo}</p><small style="color:#64748b">Obs: ${p.observacao}</small></div>`).join('')}</div>
@@ -291,8 +297,9 @@ const replica = {
     this.fecharModal();
     this.toast('Gerando...','info');
     try {
-      const modo = localStorage.getItem('modo')||'simulado';
-      const res = await API.post('/api/gerar-dia', {data, modo});
+      const modo = this.logado ? 'real' : (localStorage.getItem('modo')||'simulado');
+      const cpf = localStorage.getItem('cpf');
+      const res = await API.post('/api/gerar-dia', {data, modo, cpf});
       this.registros = await API.get('/api/registros');
       this.renderRegistros();
       this.renderComandos();
@@ -331,7 +338,9 @@ const replica = {
     const obs = document.getElementById('form-obs').value;
     if (!data || !this.disciplina || !conteudo) return this.toast('Preencha data, disciplina e conteúdo','error');
     try{
-      await API.post('/api/registros', {data, disciplina:this.disciplina, quantidadeAulas:qtd, conteudo, observacoes:obs, modo:localStorage.getItem('modo')||'simulado'});
+      const modo = this.logado ? 'real' : (localStorage.getItem('modo')||'simulado');
+      const cpf = localStorage.getItem('cpf');
+      await API.post('/api/registros', {data, disciplina:this.disciplina, quantidadeAulas:qtd, conteudo, observacoes:obs, modo, cpf});
       this.fecharForm();
       this.registros = await API.get('/api/registros');
       this.renderRegistros();
