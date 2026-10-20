@@ -91,6 +91,7 @@
       <div class="filter-sync">
         <span class="sync-dot" id="sync-status">● Aguardando login</span>
         <button class="btn-sync" onclick="replica.sincronizar()">🔄 Sincronizar</button>
+        <button class="btn-sync" onclick="replica.varredura()" title="Cria tudo que falta até hoje com base no que já existe" style="background:#0ea5e9;color:#fff;border-color:#0ea5e9">⚡ Varredura até hoje</button>
         <button class="btn-sync" onclick="replica.logout()" id="btn-logout" style="display:none">Sair</button>
       </div>
     </div>

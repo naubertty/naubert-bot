@@ -390,6 +390,26 @@ app.post('/api/replica/sincronizar', async (req, res) => {
   }
 });
 
+// Varredura completa - cria tudo que falta até hoje
+app.post('/api/varredura', async (req, res) => {
+  const { cpf, senha, ateData, modo='real', dryRun=false } = req.body;
+  try{
+    const { varreduraCompleta } = await import('./services/varreduraService.js');
+    const r = await varreduraCompleta({ cpf, senha, ateDataISO: ateData, modo, dryRun });
+    res.json(r);
+  }catch(e){
+    console.error('varredura erro', e);
+    res.status(500).json({ ok:false, error: e.message });
+  }
+});
+app.get('/api/varredura/preview', async (req, res) => {
+  try{
+    const { varreduraCompleta } = await import('./services/varreduraService.js');
+    const r = await varreduraCompleta({ dryRun:true, ateDataISO: req.query.ateData });
+    res.json(r);
+  }catch(e){ res.status(500).json({ ok:false, error:e.message }); }
+});
+
 // Fallback SPA - replica.html como default se ?replica
 app.get('/replica', (req, res) => {
   res.sendFile(path.join(frontendPath, 'replica.html'));

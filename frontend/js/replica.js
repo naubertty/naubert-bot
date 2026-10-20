@@ -358,6 +358,32 @@ const replica = {
     }catch(e){ this.toast(e.message,'error') }
   },
 
+  async varredura(){
+    const cpf = localStorage.getItem('cpf');
+    const senha = localStorage.getItem('senha');
+    const modo = this.logado ? 'real' : 'simulado';
+    if(!this.logado){
+      if(!confirm('Você está em modo local. A varredura vai criar tudo que falta ATÉ HOJE (20/10/2026) usando o que já existe no painel. Continuar?')) return;
+    } else {
+      if(!confirm(`Varredura completa até hoje em modo REAL?\nVai analisar dias letivos de 09/02 a 20/10 e criar o que falta no painel E no site oficial.`)) return;
+    }
+    this.toast('Fazendo varredura até hoje...','info');
+    try{
+      const r = await API.post('/api/varredura', { cpf, senha, modo, dryRun:false });
+      if(r.criados===0){
+        this.toast(`Tudo em dia! ${r.jaExistiam} já existiam, nada a criar.`, 'success');
+      } else {
+        this.toast(`Varredura: +${r.criados} novos • ${r.jaExistiam} já existiam • Total ${r.totalFinal} dias`, 'success');
+      }
+      // mostra log
+      if(r.logs && r.logs.length){
+        this.modal('Varredura concluída - '+r.ateData, `<p><strong>${r.criados} criados</strong> até ${r.ateData} <small>(${r.origem})</small></p><p style="color:#64748b;font-size:12px">Modo ${r.modo} • ${r.jaExistiam} já existiam • ${r.puladosNaoLetivo} não letivos pulados</p><div style="background:#0f172a;color:#e2e8f0;padding:10px;border-radius:8px;max-height:240px;overflow:auto;font-family:monospace;font-size:11px;margin-top:8px">${(r.logs||[]).join('<br>')}</div><ul style="margin-top:10px;max-height:120px;overflow:auto;font-size:12px">${(r.criadosDetalhe||[]).map(c=> `<li>${c.data} ${c.disciplina} ${c.quantidadeAulas}a</li>`).join('')}</ul>`, [{label:'Fechar', fn:()=>this.fecharModal(), cls:'btn-save'}]);
+      }
+      this.refresh();
+      this.renderComandos();
+    }catch(e){ this.toast(e.message,'error'); }
+  },
+
   ver(id){
     const r=this.registros.find(x=>x.id===id);
     if(!r) return;
