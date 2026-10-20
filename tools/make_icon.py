@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Gera o icone do Gree+ (greeplus.ico + greeplus.png).
+"""Gera o icone do Gree+ por codigo (alternativa ao icon_from_image.py).
+
+O icone oficial do repositorio foi produzido a partir de uma arte (ver
+icon_from_image.py). Este script desenha uma versao vetorial em Python, util
+para ajustar cores/formas sem depender de imagem externa.
+
+Gera o icone do Gree+ (greeplus.ico + greeplus.png).
 
 Uso (precisa de Pillow, so para gerar o icone):
     pip install pillow
@@ -77,7 +83,6 @@ def build(canvas: int = CANVAS) -> Image.Image:
 
     draw = ImageDraw.Draw(image)
     white = (255, 255, 255, 255)
-    soft = (255, 255, 255, 175)
 
     # Corpo do ar-condicionado (split de parede), levemente inclinado.
     unit = Image.new("RGBA", (size, size), (0, 0, 0, 0))

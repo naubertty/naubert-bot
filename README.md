@@ -96,7 +96,11 @@ Recursos pensados para esse uso:
 
 ## Ícone
 
-O projeto inclui `greeplus.ico` (10 tamanhos, de 16 a 256 px) e `greeplus.png`.
+![ícone](docs/icon-sizes.png)
+
+O projeto inclui `greeplus.ico` (10 tamanhos, de 16 a 256 px, com cantos transparentes) e
+`greeplus.png` (512 px). O desenho é um split de parede com fluxo de ar e floco de gelo,
+legível até em 16 px.
 O `INICIAR-COM-O-WINDOWS.bat` aplica esse ícone automaticamente nos atalhos:
 
 - **Abrir Gree+** na Área de Trabalho — abre via `GreePlus.vbs`, então **sem janela preta**;
@@ -126,7 +130,18 @@ GreePlus.exe web --demo     teste com aparelho simulado
 GreePlus.exe web            controle normal
 ```
 
-Para regenerar o ícone a partir do código: `pip install pillow` e `python tools/make_icon.py`.
+Para trocar a arte: salve sua imagem quadrada (PNG, 1024 px ou mais), rode
+`pip install pillow` e depois:
+
+```bash
+python tools/icon_from_image.py caminho/da/sua-arte.png
+```
+
+O script recorta em quadrado, deixa transparente o branco de fora do desenho e regrava
+`greeplus.png`, `greeplus.ico` e as cópias usadas pelo servidor web.
+
+Também há uma versão 100% desenhada em código (`python tools/make_icon.py`), útil se você
+quiser ajustar cores e formas sem depender de imagem externa.
 
 ---
 
