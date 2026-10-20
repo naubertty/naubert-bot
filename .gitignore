@@ -1,0 +1,21 @@
+# Config gerado pelo pareamento (contém a chave do aparelho)
+greeplus.json
+greeplus-demo.json
+*.local.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Sistema
+.DS_Store
+Thumbs.db
+*.log
