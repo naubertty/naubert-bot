@@ -295,7 +295,9 @@
         var res =
           providerId === 'anthropic'
             ? await this.api.messages(cfg, current)
-            : await this.api.chat(cfg, current);
+            : providerId === 'gemini'
+              ? await this.api.generate(cfg, current)
+              : await this.api.chat(cfg, current);
 
         if (providerId === 'anthropic') {
           if (res.stop_reason === 'pause_turn' && pause < 4) {
@@ -310,6 +312,21 @@
           if (res.stop_reason === 'refusal') throw new Error('O modelo recusou esta checagem.');
           if (res.stop_reason === 'max_tokens') {
             throw new Error('Resposta truncada por max_tokens — aumente o limite nas configurações.');
+          }
+        } else if (providerId === 'gemini') {
+          var cand = (res.candidates || [])[0] || {};
+          var reason = cand.finishReason || '';
+          if (reason === 'MAX_TOKENS') {
+            throw new Error('Resposta truncada (MAX_TOKENS) — aumente max_tokens nas configurações.');
+          }
+          if (reason === 'SAFETY' || reason === 'PROHIBITED_CONTENT' || reason === 'BLOCKLIST') {
+            throw new Error('O Gemini bloqueou esta resposta por política de conteúdo (' + reason + ').');
+          }
+          if (reason === 'RECITATION') {
+            throw new Error('O Gemini recusou por citação de material protegido (RECITATION).');
+          }
+          if (!cand.content) {
+            throw new Error('O Gemini devolveu uma resposta vazia (' + (reason || 'sem candidato') + ').');
           }
         } else {
           var choice = (res.choices || [])[0] || {};
@@ -378,6 +395,23 @@
             delete tool.response_inclusion;
             current = Object.assign({}, current, { tools: [tool] });
             this.emit('log', { level: 'warn', msg: label + ': versão da busca recusada — repetindo com web_search_20250305' });
+            continue;
+          }
+        } else if (providerId === 'gemini') {
+          if (current.generationConfig && current.generationConfig.responseSchema && /schema|response_?schema|invalid/i.test(msg)) {
+            current = Object.assign({}, current, {
+              generationConfig: Object.assign({}, current.generationConfig)
+            });
+            delete current.generationConfig.responseSchema;
+            this.emit('log', { level: 'warn', msg: label + ': schema do Gemini recusado — repetindo sem responseSchema' });
+            continue;
+          }
+          if (current.generationConfig && current.generationConfig.responseMimeType && /response_?mime|json/i.test(msg)) {
+            current = Object.assign({}, current, {
+              generationConfig: Object.assign({}, current.generationConfig)
+            });
+            delete current.generationConfig.responseMimeType;
+            this.emit('log', { level: 'warn', msg: label + ': JSON mode recusado — repetindo como texto' });
             continue;
           }
         } else {
@@ -602,7 +636,7 @@
       });
       // Sem crédito ou chave inválida: parar a fila inteira em vez de gastar
       // uma tentativa por afirmação para receber o mesmo 402.
-      if (err.status === 402 || err.status === 401) {
+      if (err.status === 402 || err.status === 401 || err.grounding) {
         this.aborted = true;
         this.queue = [];
         this.emit('blocked', { message: err.message || String(err), status: err.status });

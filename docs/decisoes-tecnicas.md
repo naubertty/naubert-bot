@@ -301,3 +301,47 @@ Três decisões:
 
 A faixa no topo tem o link direto e um botão para consultar o saldo de novo — o usuário não precisa
 descobrir o caminho no console.
+
+## 16. Gemini como provedor padrão: a busca não aceita filtro de domínio
+
+Trocar o provedor padrão para o Gemini parecia só mais um adaptador. Esbarrou em duas paredes.
+
+**Parede 1 — `allowed_domains` não existe.** O grounding do Google Search na Gemini Developer API aceita
+`tools:[{google_search:{}}]` e nada mais. `excludeDomains` (e o `includeDomains` simétrico) só existem no
+Vertex AI / Enterprise; mandar o campo para `generativelanguage.googleapis.com` devolve
+`400 INVALID_ARGUMENT: Unknown name "excludeDomains"`. A pesquisa restrita, então, tem duas camadas:
+
+1. a lista de veículos entra **no prompt** da busca, como prioridade explícita;
+2. a lista é aplicada **na auditoria** — fonte cujo domínio não está nela vira `fora_da_lista` e o
+   veredito é rebaixado, exatamente como acontece quando o OpenRouter ignora o filtro.
+
+Isso é mais fraco do que o `allowed_domains` da Anthropic/Exa (o modelo pode trazer fonte de fora), mas é
+**verificável**: a auditoria continua sendo a autoridade final. O sistema prefere rebaixar a confiar.
+
+**Parede 2 — a URL do grounding não é a URL do veículo.** `groundingChunks[i].web.uri` é um
+redirecionador `vertexaisearch.cloud.google.com/grounding-api-redirect/…`; o domínio do veículo vem em
+`web.title`. Com a auditoria antiga, `hostOf(url)` nunca casava com a lista e **toda** fonte do Gemini
+seria reprovada. A correção tem duas partes:
+
+- o adaptador guarda os dois campos (`url` para o link, `domain` para a lista);
+- `auditSources` monta um mapa `url → domain` a partir da evidência e, quando a fonte declarada pelo
+  modelo é um redirect conhecido, usa esse domínio para `domainOk` — mantendo o link original no cartão.
+
+**Por que duas chamadas.** Pedir JSON estruturado junto com `google_search` faz o modelo suprimir as
+anotações de grounding, e sem elas não há o que auditar. A checagem vira: (1) busca com a ferramenta,
+texto livre, priorizando os veículos; (2) julgamento sem ferramenta, com `responseSchema` e a lista
+fechada de fontes que voltaram. É o mesmo desenho já usado no OpenRouter, por motivo parecido.
+
+**Faturamento é requisito, não detalhe.** Grounding não funciona no nível gratuito; a assinatura Google AI
+Pro é do site do AI Studio e não gera chave de API. Sem billing no projeto, a chamada falha com
+`groundingMetadata` ausente ou erro explícito — o adaptador reconhece os dois casos e para com
+`e.grounding = true`, mensagem própria e sem ficar repetindo. A interface avisa isso na tela de
+configurações, com o custo real: 5.000 buscas/mês grátis com billing ativo, depois US$ 14/1.000.
+
+**Preços usados na estimativa.** Flash 3.8 a 0,75/3,75 por 1M (entrada/saída, até 31/12/2026); triagem no
+Flash-Lite 3.1 a 0,25/1,50; `thoughtsTokenCount` conta como saída. Uma checagem com busca dá US$ 0,02–0,04.
+
+**A transcrição também passou a ter caminho próprio.** No modo *áudio da aba*, o trecho vai inline no
+`generateContent` com `inline_data` — assim, quem só tem chave do Gemini não fica dependente do saldo do
+OpenRouter, que era exatamente o problema que motivou a troca. O servidor normaliza a resposta para
+`{text, usage}`, então o resto do `audio.js` não mudou.

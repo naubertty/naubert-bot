@@ -100,6 +100,7 @@
         }
         lines.push(
           '[' + (i + 1) + '] ' + (r.title || '(sem título)') +
+          (r.domain && r.domain !== r.title ? ' — ' + r.domain : '') +
           '\n    URL: ' + r.url +
           (snippet ? '\n    TRECHO: ' + snippet.replace(/\s+/g, ' ').slice(0, 600) : '')
         );
@@ -447,11 +448,230 @@
     usageOf: orUsage
   };
 
-  var ALL = { anthropic: anthropic, openrouter: openrouter };
+
+  /* ---------------------------------------------------------------- gemini */
+
+  /**
+   * Converte JSON Schema para o subconjunto OpenAPI que o Gemini aceita:
+   * sem additionalProperties, tipos em minúsculas, `enum` como lista de strings.
+   */
+  function toGeminiSchema(node) {
+    if (Array.isArray(node)) return node.map(toGeminiSchema);
+    if (!node || typeof node !== 'object') return node;
+    var out = {};
+    Object.keys(node).forEach(function (k) {
+      if (k === 'additionalProperties' || k === '$schema' || k === 'title') return;
+      var v = node[k];
+      if (k === 'properties') {
+        out.properties = {};
+        Object.keys(v || {}).forEach(function (name) {
+          out.properties[name] = toGeminiSchema(v[name]);
+        });
+        return;
+      }
+      out[k] = toGeminiSchema(v);
+    });
+    return out;
+  }
+
+  /** Texto de todos os parts de resposta do Gemini. */
+  function gemText(res) {
+    var cand = (res && res.candidates && res.candidates[0]) || {};
+    var content = cand.content || {};
+    return (content.parts || [])
+      .map(function (p) {
+        return (p && p.text) || '';
+      })
+      .join('')
+      .trim();
+  }
+
+  /**
+   * A evidência do Gemini está em `groundingMetadata`:
+   *   groundingChunks  -> [{ web: { uri, title } }]  (uri é redirecionador, title é o domínio)
+   *   groundingSupports-> liga trechos do texto aos chunks citados
+   *   webSearchQueries -> consultas executadas (é o que a API cobra)
+   */
+  function geminiEvidence(res) {
+    var ev = { queries: [], results: [], citations: [], errors: [], searchRequests: 0 };
+    var cand = (res && res.candidates && res.candidates[0]) || {};
+    var gm = cand.groundingMetadata || {};
+    var chunks = gm.groundingChunks || [];
+    var seen = Object.create(null);
+
+    (gm.webSearchQueries || []).forEach(function (q) {
+      if (q && ev.queries.indexOf(q) === -1) ev.queries.push(q);
+    });
+    ev.searchRequests = (gm.webSearchQueries || []).length;
+
+    chunks.forEach(function (c) {
+      var web = c && (c.web || c.retrievedContext);
+      if (!web || !web.uri) return;
+      var key = String(web.uri);
+      if (seen[key]) return;
+      seen[key] = true;
+      ev.results.push({
+        // O uri do grounding é um redirecionador do Google que abre a matéria;
+        // o título é o domínio do veículo. A auditoria usa `domain` para checar
+        // a lista e `url` para o link.
+        url: web.uri,
+        title: web.title || '',
+        domain: web.title || '',
+        pageAge: ''
+      });
+    });
+
+    (gm.groundingSupports || []).forEach(function (sup) {
+      var text = (sup && sup.segment && sup.segment.text) || '';
+      (sup && sup.groundingChunkIndices ? sup.groundingChunkIndices : []).forEach(function (i) {
+        var c = chunks[i];
+        var web = c && (c.web || c.retrievedContext);
+        if (!web || !web.uri) return;
+        ev.citations.push({ url: web.uri, title: web.title || '', citedText: text, domain: web.title || '' });
+      });
+    });
+
+    return ev;
+  }
+
+  function geminiUsage(res) {
+    var u = (res && res.usageMetadata) || {};
+    var gm = (((res && res.candidates && res.candidates[0]) || {}).groundingMetadata) || {};
+    return {
+      input: u.promptTokenCount || 0,
+      // thoughtsTokenCount é cobrado como saída.
+      output: (u.candidatesTokenCount || 0) + (u.thoughtsTokenCount || 0),
+      searches: (gm.webSearchQueries || []).length,
+      cost: null,
+      calls: 1
+    };
+  }
+
+  /** A busca por grounding exige faturamento; o erro precisa ser explícito. */
+  function isGroundingUnavailable(err) {
+    var msg = String((err && err.message) || '');
+    return /grounding|google_search|google search|faturamento|billing|free tier|n[ií]vel gratuito/i.test(msg);
+  }
+
+  var SYSTEM_SEARCH_GEMINI = [
+    'Você é um pesquisador de redação levantando material para checar uma afirmação feita em um debate ao vivo.',
+    '',
+    'Use a busca do Google. Comece pelo dado exato: número, período, unidade, população e abrangência.',
+    'Faça de uma a três buscas, variando os termos se a primeira não resolver.',
+    'Priorize os veículos de imprensa e órgãos oficiais listados abaixo; se um deles aparecer nos resultados, cite-o.',
+    '',
+    'Depois escreva de 2 a 5 frases dizendo o que as fontes encontradas mostram.',
+    'Não invente dados. Se a busca não trouxer nada útil, diga isso expressamente.',
+    'Não emita opinião política e não avalie os debatedores.'
+  ].join('\n');
+
+  var gemini = {
+    id: 'gemini',
+    label: 'Gemini',
+    defaultModel: 'gemini-3.8-flash',
+    supportsDomainFilter: false,
+
+    triage: async function (ctx) {
+      var cfg = ctx.cfg;
+      var body = {
+        model: cfg.triageModel || cfg.model,
+        systemInstruction: { parts: [{ text: PU().SYSTEM_TRIAGE }] },
+        contents: [{ role: 'user', parts: [{ text: triagePrompt(ctx.window) }] }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: cfg.maxTokensTriage,
+          responseMimeType: 'application/json',
+          responseSchema: toGeminiSchema(PU().CLAIM_SCHEMA)
+        }
+      };
+
+      var res = await ctx.callJson(body, 'triagem');
+      var data = PU().parseJsonLoose(gemText(res)) || { afirmacoes: [], comentario: 'resposta ilegível' };
+      return { data: data, usage: geminiUsage(res) };
+    },
+
+    verify: async function (ctx) {
+      var cfg = ctx.cfg;
+
+      // Fase 1 — busca. Sem schema aqui: pedir JSON junto com a busca tende a
+      // apagar as citações (groundingSupports), que são a prova do que voltou.
+      var searchBody = {
+        model: cfg.model,
+        systemInstruction: { parts: [{ text: SYSTEM_SEARCH_GEMINI }] },
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                text:
+                  claimPrompt(ctx.claim, ctx.today) +
+                  '\n\nVeículos que devem ser priorizados na busca (o veredito só pode se apoiar neles):\n' +
+                  ctx.outlets.join(', ') +
+                  '\n\nBusque o dado e resuma o que as fontes mostram.'
+              }
+            ]
+          }
+        ],
+        tools: [{ google_search: {} }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: Math.min(cfg.maxTokensVerify || 3000, 4000) }
+      };
+
+      var searchRes;
+      try {
+        searchRes = await ctx.callPlain(searchBody, 'busca');
+      } catch (err) {
+        if (isGroundingUnavailable(err)) {
+          var e = new Error(
+            'A busca do Google no Gemini precisa de faturamento ativado no projeto do AI Studio. ' +
+              'O nível gratuito não inclui grounding — a checagem não pode rodar sem busca. ' +
+              'Ative o faturamento (ou use OpenRouter/Anthropic). Detalhe: ' +
+              (err.message || err)
+          );
+          e.status = 402;
+          e.grounding = true;
+          throw e;
+        }
+        throw err;
+      }
+
+      var evidence = geminiEvidence(searchRes);
+      if (!evidence.results.length) {
+        ctx.emit('warn', 'a busca do Google não devolveu fontes rastreáveis — o veredito tende a NÃO VERIFICADO');
+      }
+
+      // Fase 2 — julgamento com lista fechada, sem busca.
+      var judgeBody = {
+        model: cfg.judgeModel || cfg.model,
+        systemInstruction: { parts: [{ text: SYSTEM_JUDGE }] },
+        contents: [{ role: 'user', parts: [{ text: judgePrompt(ctx.claim, evidence, ctx.today) }] }],
+        generationConfig: {
+          temperature: 0,
+          maxOutputTokens: cfg.maxTokensVerify,
+          responseMimeType: 'application/json',
+          responseSchema: toGeminiSchema(PU().VERIFY_SCHEMA)
+        }
+      };
+
+      var judgeRes = await ctx.callJson(judgeBody, 'julgamento');
+      var data = PU().parseJsonLoose(gemText(judgeRes));
+      if (!data) throw new Error('O julgamento não veio em JSON legível.');
+
+      return {
+        data: data,
+        evidence: evidence,
+        usage: mergeUsage(geminiUsage(searchRes), geminiUsage(judgeRes))
+      };
+    },
+
+    usageOf: geminiUsage
+  };
+
+  var ALL = { anthropic: anthropic, openrouter: openrouter, gemini: gemini };
 
   NB.providers = {
     anthropic: anthropic,
     openrouter: openrouter,
+    gemini: gemini,
     all: ALL,
     get: function (cfg) {
       return ALL[(cfg && cfg.provider) || 'openrouter'] || openrouter;
@@ -467,6 +687,11 @@
     isToolRejection: isToolRejection,
     isDomainRejection: isDomainRejection,
     SYSTEM_SEARCH: SYSTEM_SEARCH,
-    SYSTEM_JUDGE: SYSTEM_JUDGE
+    SYSTEM_JUDGE: SYSTEM_JUDGE,
+    toGeminiSchema: toGeminiSchema,
+    geminiEvidence: geminiEvidence,
+    gemText: gemText,
+    geminiUsage: geminiUsage,
+    isGroundingUnavailable: isGroundingUnavailable
   };
 })(window);

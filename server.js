@@ -71,6 +71,8 @@ const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || '0.0.0.0';
 const API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+const GEMINI_BASE = process.env.GEMINI_BASE || 'https://generativelanguage.googleapis.com/v1beta';
 const OPENROUTER_REFERER = process.env.OPENROUTER_REFERER || '';
 const OPENROUTER_TITLE = process.env.OPENROUTER_TITLE || 'naubert-bot';
 const OPENROUTER_BASE = process.env.OPENROUTER_BASE || 'https://openrouter.ai/api/v1';
@@ -274,6 +276,164 @@ async function forwardToAnthropic(req, res, pathname) {
   }
 }
 
+/* ----------------------------------------------------------------- gemini */
+
+async function forwardToGemini(req, res) {
+  let body;
+  try {
+    body = await readBody(req);
+  } catch (err) {
+    apiError(res, err.status || 400, 'invalid_request_error', err.message);
+    return;
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(body || '{}');
+  } catch (err) {
+    apiError(res, 400, 'invalid_request_error', 'JSON inválido.');
+    return;
+  }
+
+  const model = String(payload.model || '').trim();
+  if (!/^[a-zA-Z0-9._-]{3,80}$/.test(model)) {
+    apiError(res, 400, 'invalid_request_error', 'Informe um modelo válido (ex.: gemini-3.8-flash).');
+    return;
+  }
+  delete payload.model;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT);
+  const target =
+    GEMINI_BASE + '/models/' + encodeURIComponent(model) + ':generateContent';
+
+  try {
+    const upstream = await fetch(target, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    const text = await upstream.text();
+    res.writeHead(upstream.status, {
+      'content-type': upstream.headers.get('content-type') || 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+    });
+    res.end(text);
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      apiError(res, 504, 'timeout_error', 'O Gemini não respondeu a tempo (' + UPSTREAM_TIMEOUT / 1000 + 's).');
+      return;
+    }
+    apiError(res, 502, 'upstream_error', 'Falha ao falar com o Gemini: ' + err.message);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const GEMINI_STT_PROMPT =
+  'Transcreva literalmente, em português do Brasil, a fala do áudio a seguir. ' +
+  'Responda só com a transcrição, sem comentários, sem pontuação inventada e sem repetir instruções. ' +
+  'Se não houver fala inteligível, responda com uma string vazia.';
+
+const AUDIO_MIME = {
+  webm: 'audio/webm',
+  ogg: 'audio/ogg',
+  oga: 'audio/ogg',
+  mp3: 'audio/mpeg',
+  m4a: 'audio/mp4',
+  mp4: 'audio/mp4',
+  wav: 'audio/wav',
+  flac: 'audio/flac',
+};
+
+async function forwardGeminiTranscribe(req, res) {
+  let body;
+  try {
+    body = await readBody(req);
+  } catch (err) {
+    apiError(res, err.status || 400, 'invalid_request_error', err.message);
+    return;
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(body || '{}');
+  } catch (err) {
+    apiError(res, 400, 'invalid_request_error', 'JSON inválido.');
+    return;
+  }
+
+  const audio = payload.input_audio || payload.audio || {};
+  const data = String(audio.data || '').trim();
+  const format = String(audio.format || audio.mimeType || audio.mime_type || 'webm')
+    .replace(/^audio\//, '')
+    .toLowerCase();
+  const mime = AUDIO_MIME[format] || 'audio/webm';
+
+  if (!data) {
+    apiError(res, 400, 'invalid_request_error', 'Faltou o áudio (input_audio.data em base64).');
+    return;
+  }
+
+  const model = String(payload.model || '').trim();
+  if (!/^[a-zA-Z0-9._-]{3,80}$/.test(model)) {
+    apiError(res, 400, 'invalid_request_error', 'Informe um modelo válido (ex.: gemini-3.5-transcribe).');
+    return;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT);
+
+  try {
+    const upstream = await fetch(
+      GEMINI_BASE + '/models/' + encodeURIComponent(model) + ':generateContent',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: GEMINI_STT_PROMPT }, { inline_data: { mime_type: mime, data: data } }],
+            },
+          ],
+          generationConfig: { temperature: 0, maxOutputTokens: 4096 },
+        }),
+        signal: controller.signal,
+      }
+    );
+
+    const raw = await upstream.json().catch(() => ({}));
+    if (!upstream.ok) {
+      json(res, upstream.status, { ok: false, error: raw.error || { message: 'HTTP ' + upstream.status } });
+      return;
+    }
+
+    const cand = (raw.candidates || [])[0] || {};
+    const text = ((cand.content && cand.content.parts) || [])
+      .map((p) => (p && p.text) || '')
+      .join('')
+      .trim();
+    const u = raw.usageMetadata || {};
+
+    json(res, 200, {
+      ok: true,
+      text: text,
+      model: model,
+      usage: { input: u.promptTokenCount || 0, output: u.candidatesTokenCount || 0, cost: null, calls: 1, searches: 0 },
+    });
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      apiError(res, 504, 'timeout_error', 'O Gemini não respondeu a tempo (' + UPSTREAM_TIMEOUT / 1000 + 's).');
+      return;
+    }
+    apiError(res, 502, 'upstream_error', 'Falha ao transcrever com o Gemini: ' + err.message);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /* ------------------------------------------------------------- openrouter */
 
 const modelCache = { at: 0, data: null };
@@ -414,9 +574,10 @@ const server = http.createServer(async (req, res) => {
         ok: true,
         service: 'naubert-bot',
         // compatibilidade com a versão anterior (só Anthropic)
-        keyConfigured: !!OPENROUTER_API_KEY || !!API_KEY,
-        keyMasked: maskKey(OPENROUTER_API_KEY || API_KEY),
+        keyConfigured: !!GEMINI_API_KEY || !!OPENROUTER_API_KEY || !!API_KEY,
+        keyMasked: maskKey(GEMINI_API_KEY || OPENROUTER_API_KEY || API_KEY),
         providers: {
+          gemini: { keyConfigured: !!GEMINI_API_KEY, keyMasked: maskKey(GEMINI_API_KEY) },
           openrouter: { keyConfigured: !!OPENROUTER_API_KEY, keyMasked: maskKey(OPENROUTER_API_KEY) },
           anthropic: { keyConfigured: !!API_KEY, keyMasked: maskKey(API_KEY) },
         },
@@ -432,6 +593,82 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       await forwardToAnthropic(req, res, '/v1/models');
+      return;
+    }
+
+    // Gemini: o modelo vai no caminho da URL, então o cliente manda `model` no corpo.
+    if (pathname === '/api/gemini/generate') {
+      if (req.method !== 'POST') {
+        apiError(res, 405, 'invalid_request_error', 'Use POST.');
+        return;
+      }
+      if (!checkToken(req)) {
+        apiError(res, 401, 'authentication_error', 'Token do proxy inválido.');
+        return;
+      }
+      if (!GEMINI_API_KEY) {
+        apiError(
+          res,
+          500,
+          'configuration_error',
+          'GEMINI_API_KEY não configurada no servidor. Copie .env.example para .env, preencha e reinicie.'
+        );
+        return;
+      }
+      await forwardToGemini(req, res);
+      return;
+    }
+
+    // Transcrição pelo Gemini: áudio inline no generateContent (sem Whisper).
+    if (pathname === '/api/gemini/transcribe') {
+      if (req.method !== 'POST') {
+        apiError(res, 405, 'invalid_request_error', 'Use POST.');
+        return;
+      }
+      if (!checkToken(req)) {
+        apiError(res, 401, 'authentication_error', 'Token do proxy inválido.');
+        return;
+      }
+      if (!GEMINI_API_KEY) {
+        apiError(res, 500, 'configuration_error', 'GEMINI_API_KEY não configurada no servidor.');
+        return;
+      }
+      await forwardGeminiTranscribe(req, res);
+      return;
+    }
+
+    // Catálogo do Gemini: GET /v1beta/models não gasta tokens e confirma a chave.
+    if (pathname === '/api/gemini/models') {
+      if (!checkToken(req)) {
+        apiError(res, 401, 'authentication_error', 'Token do proxy inválido.');
+        return;
+      }
+      if (!GEMINI_API_KEY) {
+        apiError(res, 500, 'configuration_error', 'GEMINI_API_KEY não configurada no servidor.');
+        return;
+      }
+      try {
+        const upstream = await fetch(GEMINI_BASE + '/models?pageSize=200', {
+          headers: { 'x-goog-api-key': GEMINI_API_KEY },
+        });
+        const raw = await upstream.json().catch(() => ({}));
+        if (!upstream.ok) {
+          json(res, upstream.status, { ok: false, error: raw.error || { message: 'HTTP ' + upstream.status } });
+          return;
+        }
+        const models = (raw.models || [])
+          .filter((m) => (m.supportedGenerationMethods || []).includes('generateContent'))
+          .map((m) => ({
+            id: String(m.name || '').replace(/^models\//, ''),
+            name: m.displayName || '',
+            context: m.inputTokenLimit || null,
+            output: m.outputTokenLimit || null,
+          }))
+          .filter((m) => /^gemini/.test(m.id));
+        json(res, 200, { ok: true, total: models.length, models });
+      } catch (err) {
+        apiError(res, 502, 'upstream_error', 'Não foi possível listar os modelos do Gemini: ' + err.message);
+      }
       return;
     }
 
@@ -548,6 +785,7 @@ server.listen(PORT, HOST, () => {
   console.log('  naubert-bot · checagem ao vivo');
   console.log('  http://localhost:' + PORT);
   console.log('');
+  console.log('  Gemini:      ' + (GEMINI_API_KEY ? maskKey(GEMINI_API_KEY) : 'AUSENTE'));
   console.log('  OpenRouter:  ' + (OPENROUTER_API_KEY ? maskKey(OPENROUTER_API_KEY) : 'AUSENTE'));
   console.log('  Anthropic:   ' + (API_KEY ? maskKey(API_KEY) : 'ausente (opcional)'));
   console.log('');
@@ -555,10 +793,10 @@ server.listen(PORT, HOST, () => {
   if (OPENROUTER_API_KEY && looksPlaceholder(OPENROUTER_API_KEY)) {
     console.log('  ! a chave do OpenRouter parece ser o texto de exemplo — troque pelo valor real');
   }
-  if (!OPENROUTER_API_KEY && !API_KEY) {
+  if (!GEMINI_API_KEY && !OPENROUTER_API_KEY && !API_KEY) {
     if (!ENV_FOUND) {
       const found = envHint();
-      console.log('  → crie ' + ENV_FILE + ' com OPENROUTER_API_KEY=sk-or-v1-…');
+      console.log('  → crie ' + ENV_FILE + ' com GEMINI_API_KEY=… ou OPENROUTER_API_KEY=sk-or-v1-…');
       if (found) {
         console.log('  ! existe um .env em ' + found);
         console.log('    copie esse arquivo para a pasta acima ou rode o servidor a partir dela');
@@ -567,7 +805,7 @@ server.listen(PORT, HOST, () => {
       console.log('  → preencha OPENROUTER_API_KEY dentro de ' + ENV_FILE + ' e reinicie');
     }
   }
-  console.log('  transcrição: Web Speech (microfone) ou captura de aba + Whisper do OpenRouter');
+  console.log('  transcrição: Web Speech (microfone) ou captura de aba + STT (Gemini ou Whisper)');
   console.log('  veículos permitidos: definidos na própria página (Configurações)');
   console.log('');
 });

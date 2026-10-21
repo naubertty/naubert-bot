@@ -198,6 +198,118 @@ test('auditSources reconhece fonte pelo título normalizado', () => {
   assert.equal(audit.items[0].seenInSearch, true);
 });
 
+test('auditSources usa o domínio do grounding quando a URL é redirecionador', () => {
+  const redirect = 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/AbC123';
+  const ev = NB.providers.geminiEvidence({
+    candidates: [{
+      content: { parts: [{ text: 'O censo contou 203 milhões.' }] },
+      groundingMetadata: {
+        webSearchQueries: ['censo 2022 populacao'],
+        groundingChunks: [{ web: { uri: redirect, title: 'g1.globo.com' } }],
+        groundingSupports: [{ segment: { text: '203 milhões' }, groundingChunkIndices: [0] }],
+      },
+    }],
+  });
+  assert.equal(ev.results[0].domain, 'g1.globo.com');
+  const audit = NB.audit.auditSources({
+    sources: [{ veiculo: 'g1', titulo: 'Censo 2022', url: redirect, trecho: '203 milhões' }],
+    evidence: ev,
+    allowed,
+  });
+  assert.equal(audit.items[0].host, 'g1.globo.com');
+  assert.equal(audit.items[0].domainOk, true);
+  assert.equal(audit.items[0].seenInSearch, true);
+  assert.equal(audit.items[0].status, 'confirmada');
+  assert.equal(audit.trusted, 1);
+});
+
+test('auditSources rejeita fonte do Gemini fora da lista mesmo com redirect válido', () => {
+  const redirect = 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/XyZ';
+  const ev = NB.providers.geminiEvidence({
+    candidates: [{
+      content: { parts: [{ text: 'segundo o blog' }] },
+      groundingMetadata: {
+        webSearchQueries: ['x'],
+        groundingChunks: [{ web: { uri: redirect, title: 'blog-aleatorio.com' } }],
+      },
+    }],
+  });
+  const audit = NB.audit.auditSources({
+    sources: [{ titulo: 'blog', url: redirect }],
+    evidence: ev,
+    allowed,
+  });
+  assert.equal(audit.items[0].domainOk, false);
+  assert.equal(audit.items[0].status, 'fora_da_lista');
+  assert.equal(audit.trusted, 0);
+  assert.ok(NB.providers.geminiUsage({ usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 20, thoughtsTokenCount: 5 } }).output === 25);
+});
+
+test('_callJson no Gemini repete sem responseSchema quando o modelo recusa', async () => {
+  const bodies = [];
+  const api = {
+    generate: async (cfg, body) => {
+      bodies.push(body);
+      if (bodies.length === 1) throw http400('Invalid JSON payload: responseSchema unknown field');
+      return { candidates: [{ content: { parts: [{ text: '{"ok":true}' }] }, finishReason: 'STOP' }] };
+    },
+  };
+  const pipeline = new NB.Pipeline({ store: fakeStore('gemini'), api });
+  const out = await pipeline._callJson(
+    {
+      model: 'gemini-3.8-flash',
+      contents: [{ role: 'user', parts: [{ text: 'oi' }] }],
+      generationConfig: { responseMimeType: 'application/json', responseSchema: { type: 'object' } },
+    },
+    'teste',
+    'gemini'
+  );
+  assert.equal(bodies.length, 2);
+  assert.ok(bodies[0].generationConfig.responseSchema);
+  assert.equal(bodies[1].generationConfig.responseSchema, undefined);
+  // sem schema, o modo JSON continua; só ele cai se também for recusado
+  assert.equal(bodies[1].generationConfig.responseMimeType, 'application/json');
+  assert.equal(NB.providers.gemText(out), '{"ok":true}');
+});
+
+test('_callJson no Gemini repete sem JSON mode quando o modelo recusa', async () => {
+  const bodies = [];
+  const api = {
+    generate: async (cfg, body) => {
+      bodies.push(body);
+      if (bodies.length === 1) throw http400('responseMimeType application/json not supported');
+      return { candidates: [{ content: { parts: [{ text: 'texto puro' }] }, finishReason: 'STOP' }] };
+    },
+  };
+  const pipeline = new NB.Pipeline({ store: fakeStore('gemini'), api });
+  await pipeline._callJson(
+    {
+      model: 'gemini-3.8-flash',
+      contents: [{ role: 'user', parts: [{ text: 'oi' }] }],
+      generationConfig: { responseMimeType: 'application/json' },
+    },
+    'teste',
+    'gemini'
+  );
+  assert.equal(bodies.length, 2);
+  assert.equal(bodies[1].generationConfig.responseMimeType, undefined);
+});
+
+test('MAX_TOKENS do Gemini vira erro explicativo, não JSON truncado', async () => {
+  const pipeline = new NB.Pipeline({
+    store: fakeStore('gemini'),
+    api: {
+      generate: async () => ({
+        candidates: [{ content: { parts: [{ text: '{"veredito":' }] }, finishReason: 'MAX_TOKENS' }],
+      }),
+    },
+  });
+  await assert.rejects(
+    () => pipeline._callJson({ model: 'gemini-3.8-flash', contents: [] }, 'teste', 'gemini'),
+    /MAX_TOKENS/
+  );
+});
+
 /* ------------------------------------------------------- regra de veredito */
 
 test('enforceSourceRule rebaixa FALSO sem fonte confirmada', () => {

@@ -355,6 +355,11 @@
 
   /** Consulta /api/v1/key: uso do dia/mês e, se a chave tem teto, o que resta. */
   async function checkCredits(quiet) {
+    // A faixa de crédito é do OpenRouter; com outro provider ela só confunde.
+    if (store.state.provider !== 'openrouter') {
+      hideCreditBanner();
+      return null;
+    }
     try {
       var data = await NB.api.keyInfo(store.state);
       var parts = [];
@@ -550,7 +555,9 @@
         model: store.state.model,
         search: store.state.provider === 'openrouter'
           ? 'openrouter:web_search · ' + store.state.searchEngine
-          : store.state.searchTool,
+          : store.state.provider === 'gemini'
+            ? 'gemini:google_search (sem filtro de domínio)'
+            : store.state.searchTool,
         domains: store.outlets,
         note: 'checagem assistida por modelo de linguagem'
       });
@@ -788,6 +795,7 @@
       applyRuntimeSettings();
       healthChecked = false;
       checkHealth();
+      checkCredits(true);
       NB.UI.closeSettings();
       NB.UI.markSaved('salvo');
       NB.UI.toast('Configurações salvas.', null, 2200);
@@ -814,11 +822,22 @@
     }
   }
 
+  function hasBrowserKey(s) {
+    if (s.provider === 'gemini') return !!s.geminiKey;
+    return s.provider === 'openrouter' ? !!s.openrouterKey : !!s.apiKey;
+  }
+
+  function keyName(provider) {
+    return provider === 'gemini' ? 'GEMINI_API_KEY' : provider === 'openrouter' ? 'OPENROUTER_API_KEY' : 'ANTHROPIC_API_KEY';
+  }
+
+  function providerLabel(provider) {
+    return provider === 'gemini' ? 'Gemini' : provider === 'openrouter' ? 'OpenRouter' : 'Anthropic';
+  }
+
   function isConfigured() {
     var s = store.state;
-    if (s.apiMode === 'direct') {
-      return s.provider === 'openrouter' ? !!s.openrouterKey : !!s.apiKey;
-    }
+    if (s.apiMode === 'direct') return hasBrowserKey(s);
     return true; // no proxy, a chave está no servidor; a resposta real dirá se falta
   }
 
@@ -829,7 +848,7 @@
     var provider = s.provider;
 
     if (s.apiMode === 'direct') {
-      var hasKey = provider === 'openrouter' ? !!s.openrouterKey : !!s.apiKey;
+      var hasKey = hasBrowserKey(s);
       serverKeyReady = hasKey;
       NB.UI.setApiStatus(
         hasKey ? 'ok' : 'warn',
@@ -844,22 +863,17 @@
     serverKeyReady = configured;
 
     if (h && h.ok && configured) {
-      NB.UI.setApiStatus(
-        'ok',
-        (provider === 'openrouter' ? 'OpenRouter' : 'Anthropic') + ' · chave no servidor'
-      );
+      NB.UI.setApiStatus('ok', providerLabel(provider) + ' · chave no servidor');
       NB.UI.log('ok', 'proxy ativo · ' + provider + ' · chave ' + ((info && info.keyMasked) || 'configurada'));
     } else if (h && h.ok && !configured) {
       NB.UI.setApiStatus('warn', 'proxy sem chave (' + provider + ')');
       NB.UI.log(
         'warn',
-        'proxy no ar, mas falta ' + (provider === 'openrouter' ? 'OPENROUTER_API_KEY' : 'ANTHROPIC_API_KEY') +
-          ' no .env. Preencha e reinicie o servidor.'
+        'proxy no ar, mas falta ' + keyName(provider) + ' no .env. Preencha e reinicie o servidor.'
       );
       if (!quiet) {
         NB.UI.toast(
-          'O proxy está no ar, mas falta a chave do ' + (provider === 'openrouter' ? 'OpenRouter' : 'Anthropic') +
-            ' no .env do servidor.',
+          'O proxy está no ar, mas falta a chave do ' + providerLabel(provider) + ' no .env do servidor.',
           'warn',
           6500
         );
@@ -892,19 +906,33 @@
       }
       var cfg = Object.assign({}, store.state, read ? read.patch : {});
       var isOR = cfg.provider === 'openrouter';
+      var isG = cfg.provider === 'gemini';
 
       if (cfg.apiMode === 'proxy') {
         var h = await NB.api.health(cfg);
         if (!h.ok) throw new Error('proxy inacessível: ' + (h.detail || 'sem resposta'));
         var info = h.providers && h.providers[cfg.provider];
         if (info && !info.keyConfigured) {
-          throw new Error(
-            'proxy no ar, mas falta ' + (isOR ? 'OPENROUTER_API_KEY' : 'ANTHROPIC_API_KEY') + ' no .env'
-          );
+          throw new Error('proxy no ar, mas falta ' + keyName(cfg.provider) + ' no .env');
         }
-      } else {
-        if (isOR && !cfg.openrouterKey) throw new Error('informe a chave do OpenRouter para o modo direto');
-        if (!isOR && !cfg.apiKey) throw new Error('informe a chave da Anthropic para o modo direto');
+      } else if (!hasBrowserKey(cfg)) {
+        throw new Error('informe a chave do ' + providerLabel(cfg.provider) + ' para o modo direto');
+      }
+
+      if (isG) {
+        // GET /v1beta/models: valida a chave sem gastar token nem acionar busca.
+        var cat = await NB.api.geminiModels(cfg);
+        var ids = (cat.models || []).map(function (m) {
+          return m.id;
+        });
+        var found = ids.indexOf(cfg.model) !== -1;
+        out.className = found ? 'test-out ok' : 'test-out warn';
+        out.textContent = found
+          ? 'Gemini ok · chave válida · ' + cfg.model + ' disponível (' + ids.length + ' modelos)'
+          : 'Chave válida, mas ' + cfg.model + ' não apareceu na lista (' + ids.length + ' modelos). Ex.: ' + ids.slice(0, 3).join(', ');
+        NB.UI.setApiStatus(found ? 'ok' : 'warn', cfg.model + (found ? ' · chave ok' : ' · modelo não listado'));
+        NB.UI.log(found ? 'ok' : 'warn', out.textContent);
+        return;
       }
 
       // Chamada mínima de verdade: valida chave, modelo e endpoint.
@@ -944,6 +972,11 @@
     var out = el.testApiOut;
     var btn = $('btnListModels');
     if (!btn) return;
+    if (store.state.provider !== 'openrouter') {
+      out.className = 'test-out warn';
+      out.textContent = 'Só o OpenRouter tem catálogo remoto; nos outros o modelo é digitado.';
+      return;
+    }
     out.className = 'test-out';
     out.textContent = 'buscando catálogo…';
     btn.disabled = true;

@@ -29,6 +29,18 @@
     { id: 'openai/gpt-5.2', label: 'GPT-5.2', note: 'alternativa' }
   ];
 
+  /* Gemini (Google AI Studio / generativelanguage): IDs sem prefixo de projeto. */
+  var GEMINI_MODELS = [
+    { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash', note: 'padrão · rápido e barato, com busca no Google' },
+    { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash', note: 'geração anterior, mesmo preço' },
+    { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash-Lite', note: 'mais barato · bom para triagem' },
+    { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite', note: 'econômico' },
+    { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro (preview)', note: 'mais capaz · só no nível pago' },
+    { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', note: 'busca cobrada por prompt, não por consulta' },
+    { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', note: 'geração anterior' },
+    { id: 'gemini-4-argon', label: 'Gemini 4 Argon', note: 'mais novo · mais caro' }
+  ];
+
   var STT_MODELS = [
     { id: 'openai/whisper-1', label: 'Whisper 1 · US$ 0,0001/s', note: 'barato e estável; bom em português' },
     { id: 'openai/whisper-large-v3', label: 'Whisper Large v3', note: 'mais preciso, mais lento' },
@@ -38,8 +50,16 @@
     { id: 'google/chirp-3', label: 'Google Chirp 3', note: 'forte em áudio de transmissão' }
   ];
 
+  /* Transcrição pelo Gemini: o áudio entra inline no generateContent. */
+  var GEMINI_STT_MODELS = [
+    { id: 'gemini-3.5-transcribe', label: 'Gemini 3.5 Transcribe', note: 'específico para áudio' },
+    { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash (áudio)', note: 'usa o mesmo modelo da checagem' },
+    { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash-Lite (áudio)', note: 'mais barato' }
+  ];
+
   // US$ por segundo de áudio enviado (referência de outubro de 2026).
   var STT_PRICES = {
+    'gemini-3.5-transcribe': 0.0001,
     'openai/whisper-1': 0.0001,
     'openai/whisper-large-v3': 0.0001,
     'openai/whisper-large-v3-turbo': 0.00004,
@@ -155,7 +175,7 @@
 
   var DEFAULTS = {
     // Provedor
-    provider: 'openrouter',            // 'openrouter' | 'anthropic'
+    provider: 'gemini',                // 'gemini' | 'openrouter' | 'anthropic'
 
     // Conexão
     apiMode: 'proxy',                  // 'proxy' | 'direct'
@@ -163,12 +183,13 @@
     proxyToken: '',                    // só quando o servidor define PROXY_TOKEN
     apiKey: '',                        // Anthropic, modo 'direct'
     openrouterKey: '',                 // OpenRouter, modo 'direct'
+    geminiKey: '',                     // Gemini, modo 'direct'
     orReferer: '',                     // header HTTP-Referer (opcional)
     orTitle: 'naubert-bot',            // header X-Title (opcional)
 
     // Modelos
-    model: 'anthropic/claude-opus-5.5',
-    triageModel: 'anthropic/claude-haiku-5.5', // vazio = mesmo modelo
+    model: 'gemini-3.8-flash',
+    triageModel: 'gemini-3.1-flash-lite', // vazio = mesmo modelo
     judgeModel: '',                    // OpenRouter: modelo do julgamento (vazio = model)
     betaHeader: '',                    // Anthropic: ex.: 'structured-outputs-2025-11-13'
 
@@ -232,12 +253,27 @@
     'anthropic/claude-opus-5.5': [4, 20],
     'anthropic/claude-sonnet-5.5': [2, 10],
     'anthropic/claude-haiku-5.5': [0.1, 0.5],
-    'anthropic/claude-sonnet-4.6': [3, 15]
+    'anthropic/claude-sonnet-4.6': [3, 15],
+    'gemini-3.8-flash': [0.75, 3.75],
+    'gemini-3.6-flash': [0.75, 3.75],
+    'gemini-3.7-flash': [0.75, 3.75],
+    'gemini-3.5-flash': [1.5, 9],
+    'gemini-3.1-flash-lite': [0.25, 1.5],
+    'gemini-3.5-flash-lite': [0.3, 2.5],
+    'gemini-3.1-pro-preview': [2, 12],
+    'gemini-2.5-pro': [1.25, 10],
+    'gemini-2.5-flash': [0.3, 2.5],
+    'gemini-4-argon': [2, 10]
   };
 
   function priceFor(provider, model) {
     if (PRICES[model]) return PRICES[model];
     var m = String(model || '').toLowerCase();
+    if (/^gemini/.test(m)) {
+      if (/pro|argon/.test(m)) return [2, 12];
+      if (/lite/.test(m)) return [0.3, 2.5];
+      return [0.75, 3.75];
+    }
     if (/haiku/.test(m)) return [1, 5];
     if (/sonnet/.test(m)) return [3, 15];
     if (/opus/.test(m)) return [4, 20];
@@ -245,7 +281,13 @@
     return [4, 20];
   }
 
+  // Preço de uma consulta de busca.
+  //   Gemini: US$ 14 por 1.000 consultas efetivamente executadas.
+  //   OpenRouter: US$ 0,01 por requisição (Exa: 0,007).
+  var GEMINI_SEARCH_PRICE = 0.014;
+
   function searchPrice(cfg) {
+    if (cfg && cfg.provider === 'gemini') return GEMINI_SEARCH_PRICE;
     if (cfg && cfg.provider === 'openrouter' && cfg.searchEngine === 'exa') return 0.007;
     return 0.01;
   }
@@ -258,22 +300,35 @@
 
   NB.config = {
     PROVIDERS: [
+      { id: 'gemini', label: 'Gemini (Google)', note: 'chave do AI Studio · busca do Google' },
       { id: 'openrouter', label: 'OpenRouter', note: 'uma chave para vários modelos' },
       { id: 'anthropic', label: 'Anthropic (direto)', note: 'precisa de chave da Anthropic' }
     ],
     ANTHROPIC_MODELS: ANTHROPIC_MODELS,
     OPENROUTER_MODELS: OPENROUTER_MODELS,
+    GEMINI_MODELS: GEMINI_MODELS,
     MODELS: ANTHROPIC_MODELS, // compatibilidade
     SEARCH_ENGINES: SEARCH_ENGINES,
     STT_MODELS: STT_MODELS,
+    GEMINI_STT_MODELS: GEMINI_STT_MODELS,
+    /** Modelos de transcrição que fazem sentido para o provedor escolhido. */
+    sttPresets: function (provider) {
+      return provider === 'gemini' ? GEMINI_STT_MODELS : STT_MODELS;
+    },
+    defaultSttFor: function (provider) {
+      return provider === 'gemini' ? GEMINI_STT_MODELS[0].id : 'openai/whisper-1';
+    },
     sttPrice: sttPrice,
     SEARCH_TOOLS: SEARCH_TOOLS,
     PRICES: PRICES,
     priceFor: priceFor,
     searchPrice: searchPrice,
     modelPresets: function (provider) {
-      return provider === 'anthropic' ? ANTHROPIC_MODELS : OPENROUTER_MODELS;
+      if (provider === 'anthropic') return ANTHROPIC_MODELS;
+      if (provider === 'gemini') return GEMINI_MODELS;
+      return OPENROUTER_MODELS;
     },
+    GEMINI_SEARCH_PRICE: GEMINI_SEARCH_PRICE,
     VERDICTS: VERDICTS,
     VERDICT_RANK: VERDICT_RANK,
     DEFAULTS: DEFAULTS,

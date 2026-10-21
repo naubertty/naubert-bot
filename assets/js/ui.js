@@ -180,7 +180,7 @@
     }
     var stt = $('f-sttModel');
     if (stt) {
-      stt.innerHTML = NB.config.STT_MODELS.map(function (t) {
+      stt.innerHTML = NB.config.sttPresets(store.state.provider).map(function (t) {
         return '<option value="' + esc(t.id) + '" title="' + esc(t.note) + '">' + esc(t.label) + '</option>';
       }).join('');
     }
@@ -700,6 +700,7 @@
     $('f-proxyToken').value = s.proxyToken || '';
     $('f-apiKey').value = s.apiKey || '';
     $('f-openrouterKey').value = s.openrouterKey || '';
+    $('f-geminiKey').value = s.geminiKey || '';
     $('f-model').value = s.model || '';
     $('f-triageModel').value = s.triageModel || '';
     $('f-judgeModel').value = s.judgeModel || '';
@@ -716,7 +717,8 @@
     $('f-locCountry').value = s.userLocation.country || '';
     $('f-locTz').value = s.userLocation.timezone || '';
     $('f-transcribeMode').value = s.transcribeMode || 'mic';
-    $('f-sttModel').value = s.sttModel || 'openai/whisper-1';
+    $('f-sttModel').value = s.sttModel || NB.config.defaultSttFor(s.provider);
+    if (!$('f-sttModel').value) $('f-sttModel').value = NB.config.defaultSttFor(s.provider);
     $('f-audioChunkSeconds').value = s.audioChunkSeconds || 6;
     $('f-chunkChars').value = s.chunkChars;
     $('f-chunkSeconds').value = s.chunkSeconds;
@@ -737,22 +739,29 @@
     var provider = $('f-provider').value;
     var direct = $('f-apiMode').value === 'direct';
     var isOR = provider === 'openrouter';
+    var isG = provider === 'gemini';
 
-    $('rowApiKey').hidden = !(direct && !isOR);
+    $('rowApiKey').hidden = !(direct && !isOR && !isG);
     $('rowOpenrouterKey').hidden = !(direct && isOR);
+    $('rowGeminiKey').hidden = !(direct && isG);
     $('rowSearchEngine').hidden = !isOR;
-    $('rowSearchTool').hidden = isOR;
+    $('rowSearchTool').hidden = isOR || isG;
     $('rowMaxResults').hidden = !isOR;
-    $('judgeField').hidden = !isOR;
-    $('rowBetaHeader').hidden = isOR;
+    $('judgeField').hidden = !(isOR || isG);
+    $('rowBetaHeader').hidden = isOR || isG;
     $('btnListModels').hidden = !isOR;
+    $('geminiNotice').hidden = !isG;
 
     $('searchHelp').innerHTML = isOR
       ? 'No OpenRouter a lista vira <code>allowed_domains</code> da ferramenta de busca. O filtro funciona em ' +
         'Exa, Parallel, Perplexity, Firecrawl e na busca nativa de Anthropic e OpenAI. Com busca nativa do ' +
         'Google o filtro não é aplicado — o sistema percebe e marca as fontes fora da lista.'
-      : 'Na Anthropic a lista vira <code>allowed_domains</code> da web_search. Domínio puro, sem ' +
-        '<code>https://</code>; subdomínios entram automaticamente.';
+      : isG
+        ? 'O grounding do Gemini não aceita lista de domínios (isso só existe no Vertex). Então a lista entra ' +
+          '<b>no prompt</b> e, na auditoria, cada fonte é conferida contra ela. Fonte fora da lista é marcada ' +
+          'como <code>blocked</code> e a checagem é descartada — o mesmo vale para fonte que não apareceu na busca.'
+        : 'Na Anthropic a lista vira <code>allowed_domains</code> da web_search. Domínio puro, sem ' +
+          '<code>https://</code>; subdomínios entram automaticamente.';
 
     $('audioChunkVal').textContent = $('f-audioChunkSeconds').value;
     $('chunkCharsVal').textContent = $('f-chunkChars').value;
@@ -771,11 +780,31 @@
       var provider = this.value;
       populateDatalist(provider);
       var current = $('f-model').value.trim();
-      var looksOpenRouter = current.indexOf('/') !== -1;
-      if (!current || (provider === 'openrouter') !== looksOpenRouter) {
-        $('f-model').value = NB.providers.get({ provider: provider }).defaultModel;
+      var adapter = NB.providers.get({ provider: provider });
+      var preset = adapter.defaultModel || '';
+      // Troca de família (gemini x autor/… x claude-…): adota os padrões do provider.
+      var sameFamily =
+        provider === 'gemini'
+          ? /^gemini/.test(current)
+          : provider === 'openrouter'
+            ? current.indexOf('/') !== -1
+            : !!current && current.indexOf('/') === -1 && !/^gemini/.test(current);
+      if (!current || !sameFamily) {
+        $('f-model').value = preset;
         $('f-triageModel').value = provider === 'openrouter' ? 'anthropic/claude-haiku-5.5' : '';
       }
+      var stt = $('f-sttModel');
+      var sttNow = stt.value;
+      stt.innerHTML = NB.config
+        .sttPresets(provider)
+        .map(function (m) {
+          return '<option value="' + esc(m.id) + '">' + esc(m.label) + '</option>';
+        })
+        .join('');
+      var keep = NB.config.sttPresets(provider).some(function (m) {
+        return m.id === sttNow;
+      });
+      stt.value = keep ? sttNow : NB.config.defaultSttFor(provider);
       syncSettingsChrome();
     });
 
@@ -813,6 +842,7 @@
       proxyToken: $('f-proxyToken').value.trim(),
       apiKey: $('f-apiKey').value.trim(),
       openrouterKey: $('f-openrouterKey').value.trim(),
+      geminiKey: $('f-geminiKey').value.trim(),
       orReferer: $('f-orReferer').value.trim(),
       model: model,
       triageModel: $('f-triageModel').value.trim(),

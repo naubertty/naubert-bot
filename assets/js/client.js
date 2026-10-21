@@ -19,6 +19,18 @@
     return (cfg.proxyBase || '').replace(/\/+$/, '');
   }
 
+  var GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+
+  /**
+   * No modo direto o modelo vai no caminho (é o formato da API do Google).
+   * No proxy ele vai no corpo, porque a rota é fixa — o servidor monta a URL.
+   */
+  function geminiUrl(cfg, model) {
+    var m = encodeURIComponent(String(model || '').trim());
+    if (cfg.apiMode === 'proxy') return base(cfg) + '/api/gemini/generate';
+    return GEMINI_BASE + '/models/' + m + ':generateContent';
+  }
+
   function transcribeUrl(cfg) {
     return cfg.apiMode === 'proxy' ? base(cfg) + '/api/openrouter/transcribe' : OR_BASE + '/audio/transcriptions';
   }
@@ -34,7 +46,9 @@
     var h = { 'content-type': 'application/json' };
 
     if (cfg.apiMode === 'direct') {
-      if (provider === 'openrouter') {
+      if (provider === 'gemini') {
+        h['x-goog-api-key'] = cfg.geminiKey || '';
+      } else if (provider === 'openrouter') {
         h.authorization = 'Bearer ' + (cfg.openrouterKey || '');
         h['HTTP-Referer'] = cfg.orReferer || (global.location && global.location.origin) || 'http://localhost';
         h['X-Title'] = cfg.orTitle || 'naubert-bot';
@@ -52,6 +66,7 @@
 
   function friendlyError(status, body, provider) {
     var err = (body && body.error) || {};
+    if (provider === 'gemini') return geminiError(status, err);
     var msg = err.message || (typeof body === 'string' ? body : JSON.stringify(body || {}));
     var type = err.type || (body && body.code) || '';
     var raw = String(msg || '').trim() || 'HTTP ' + status;
@@ -103,6 +118,39 @@
     return type ? type + ': ' + raw : raw;
   }
 
+  /**
+   * Erros do Google vêm como {error:{code,message,status}}. Os casos que
+   * importam têm mensagem própria porque a saída não é óbvia.
+   */
+  function geminiError(status, err) {
+    var raw = String((err && err.message) || '').trim() || 'HTTP ' + status;
+    if (status === 401 || status === 403 || /api key not valid|api_key_invalid/i.test(raw)) {
+      if (/permission|billing|not available|enable/i.test(raw)) {
+        return (
+          'O Google recusou a busca (grounding). No Gemini, a busca com Google Search só funciona com ' +
+          'faturamento ativado no projeto — não entra no nível gratuito. Detalhe: ' + raw
+        );
+      }
+      return 'Chave do Gemini inválida ou sem permissão (HTTP ' + status + '). Gere outra em aistudio.google.com/apikey. Detalhe: ' + raw;
+    }
+    if (status === 400) {
+      if (/google_search|grounding|tool/i.test(raw)) {
+        return (
+          'Este modelo/plano não aceita a busca do Google: ' + raw +
+          '. A busca por grounding exige faturamento ativo no projeto do AI Studio.'
+        );
+      }
+      if (/response_schema|schema/i.test(raw)) return 'O schema JSON foi recusado: ' + raw;
+      return raw;
+    }
+    if (status === 429) {
+      return 'Cota do Gemini esgotada (429). O nível gratuito tem limite por minuto e por dia — espere ou ative o faturamento. Detalhe: ' + raw;
+    }
+    if (status === 404) return 'Modelo do Gemini não encontrado: ' + raw + ' — confira o nome (ex.: gemini-3.8-flash).';
+    if (status >= 500) return 'O Gemini falhou (' + status + '): ' + raw;
+    return raw;
+  }
+
   async function send(url, cfg, provider, body, signal) {
     var res = await fetch(url, {
       method: 'POST',
@@ -126,6 +174,12 @@
       throw err;
     }
     if (!data) throw new Error('Resposta vazia da API.');
+    if (data.error && data.error.code && !data.candidates) {
+      var gerr = new Error(geminiError(data.error.code, data.error));
+      gerr.status = data.error.code;
+      gerr.body = data;
+      throw gerr;
+    }
 
     // OpenRouter às vezes devolve 200 com um objeto de erro dentro.
     if (provider === 'openrouter' && data.error && !data.choices) {
@@ -169,18 +223,117 @@
     return await res.json();
   }
 
+  /**
+   * O Gemini transcreve pelo mesmo generateContent, com o áudio inline.
+   * Vale quando o provedor é o Gemini e o modelo escolhido também é.
+   */
+  function isGeminiStt(cfg) {
+    return cfg.provider === 'gemini' && /^gemini/.test(String(cfg.sttModel || ''));
+  }
+
+  async function geminiTranscribe(cfg, body, signal) {
+    var audio = body.input_audio || body.audio || {};
+    var mime = {
+      webm: 'audio/webm',
+      ogg: 'audio/ogg',
+      mp3: 'audio/mpeg',
+      m4a: 'audio/mp4',
+      wav: 'audio/wav',
+    }[String(audio.format || 'webm').replace(/^audio\//, '')] || 'audio/webm';
+
+    var prompt =
+      'Transcreva literalmente, em português do Brasil, a fala do áudio a seguir. ' +
+      'Responda só com a transcrição, sem comentários. Se não houver fala, responda vazio.';
+
+    var payload = {
+      model: body.model,
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: prompt }, { inline_data: { mime_type: mime, data: audio.data } }],
+        },
+      ],
+      generationConfig: { temperature: 0, maxOutputTokens: 4096 },
+    };
+
+    if (cfg.apiMode === 'proxy') {
+      return send(base(cfg) + '/api/gemini/transcribe', cfg, 'gemini', {
+        model: body.model,
+        input_audio: { data: audio.data, format: String(audio.format || 'webm').replace(/^audio\//, '') },
+      }, signal);
+    }
+    return send(geminiUrl(cfg, body.model), cfg, 'gemini', payload, signal);
+  }
+
+  /**
+   * Lista modelos do Gemini. GET /v1beta/models não gasta token — serve de
+   * teste de chave.
+   */
+  async function geminiModels(cfg, signal) {
+    var url =
+      cfg.apiMode === 'proxy'
+        ? base(cfg) + '/api/gemini/models'
+        : GEMINI_BASE + '/models?pageSize=200';
+    var headers = headersFor(cfg, 'gemini');
+    var res = await fetch(url, { headers: headers, signal: signal || null, cache: 'no-store' });
+    var text = await res.text();
+    var data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch (e) {
+      throw new Error('Resposta inesperada do Gemini (HTTP ' + res.status + ').');
+    }
+    if (!res.ok || (data && data.ok === false)) {
+      var err = (data && data.error) || {};
+      var e = new Error(geminiError(err.code || res.status, err));
+      e.status = res.status;
+      throw e;
+    }
+    if (cfg.apiMode === 'direct') {
+      var models = ((data && data.models) || [])
+        .filter(function (m) {
+          return (m.supportedGenerationMethods || []).indexOf('generateContent') !== -1;
+        })
+        .map(function (m) {
+          return { id: String(m.name || '').replace(/^models\//, ''), name: m.displayName || '', context: m.inputTokenLimit || null };
+        })
+        .filter(function (m) {
+          return /^gemini/.test(m.id);
+        });
+      return { ok: true, total: models.length, models: models };
+    }
+    return data;
+  }
+
   NB.api = {
     messages: messages,
+    geminiModels: geminiModels,
     chat: chat,
     health: health,
     models: models,
 
     /**
      * Transcrição de um trecho de áudio (captura de aba).
-     * Sempre OpenRouter: é o único provedor configurado com /audio/transcriptions.
+     *
+     * No Gemini o áudio vai inline no generateContent (o modelo precisa aceitar
+     * áudio). Nos outros provedores é o /audio/transcriptions do OpenRouter.
      */
     transcribe: async function (cfg, body, signal) {
+      if (isGeminiStt(cfg)) return geminiTranscribe(cfg, body, signal);
       return send(transcribeUrl(cfg), cfg, 'openrouter', body, signal);
+    },
+
+    /**
+     * Gemini generateContent. O `model` vai no caminho da URL; o proxy também
+     * aceita no corpo para ficar igual ao resto do app.
+     */
+    generate: async function (cfg, body, signal) {
+      var model = body.model;
+      var payload = Object.assign({}, body);
+      // No proxy o modelo precisa ir no corpo; no modo direto ele vai na URL.
+      if (cfg.apiMode === 'proxy') return send(geminiUrl(cfg, model), cfg, 'gemini', payload, signal);
+      delete payload.model;
+      return send(geminiUrl(cfg, model), cfg, 'gemini', payload, signal);
     },
 
     /** Saldo/limite da chave do OpenRouter (não gasta crédito). */

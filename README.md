@@ -4,18 +4,19 @@ Checagem de fatos **ao vivo** para debates. A página transcreve a fala pelo mic
 afirmação checável do que é opinião, verifica cada afirmação com busca restrita a uma lista de veículos
 de imprensa e mostra o resultado **sobre o vídeo**, com um duotone verde ou vermelho e a matéria citada.
 
-A API é a do **[OpenRouter](https://openrouter.ai)** por padrão — uma chave `sk-or-v1-…` dá acesso a
-Claude, GPT e Gemini. A Anthropic direta continua disponível como alternativa.
+O provedor padrão é o **Gemini**, com chave do Google AI Studio (`AIza…`). O
+**[OpenRouter](https://openrouter.ai)** (uma chave `sk-or-v1-…`, que dá acesso a Claude, GPT e Gemini) e a
+**Anthropic direta** continuam disponíveis nas configurações.
 
 ```
  microfone ──► Web Speech API ──► janelas de transcrição
                                         │
                                         ▼
-                              triagem (Claude Haiku)  ──► opinião / previsão / promessa: descartadas
+                              triagem (Flash-Lite)  ──► opinião / previsão / promessa: descartadas
                                         │
                                         ▼
-              verificação em duas fases, com busca restrita por allowed_domains
-                     fase 1: busca (openrouter:web_search)  ──► citações reais
+              verificação em duas fases, com busca entre veículos pré-estabelecidos
+                     fase 1: busca (Gemini + Google Search) ──► fontes reais (grounding)
                      fase 2: julgamento com lista fechada   ──► veredito + fonte
                                         │
                                         ▼
@@ -39,7 +40,8 @@ Claude, GPT e Gemini. A Anthropic direta continua disponível como alternativa.
 |---|---|
 | **Node.js 18+** | [nodejs.org](https://nodejs.org) — confira com `node -v`. O projeto **não tem dependências**, então não é preciso `npm install`. |
 | **Chrome ou Edge** no desktop | A Web Speech API não existe no Firefox nem no Safari. No celular, o Chrome também não transcreve de forma confiável. |
-| **Chave do OpenRouter** | Em [openrouter.ai/workspaces/default/keys](https://openrouter.ai/workspaces/default/keys) → *Create key*. É paga por uso: uma checagem custa alguns centavos de dólar (veja [Custo](#modelos-custo-e-configuração)). |
+| **Chave do Gemini** | Em [aistudio.google.com/apikey](https://aistudio.google.com/apikey) → *Create API key*. A busca exige **faturamento ativado** no projeto; sem isso a checagem não roda. Custo estimado por afirmação: US$ 0,02–0,04 (veja [Custo](#modelos-custo-e-configuração)). |
+| **Alternativa: chave do OpenRouter** | Em [openrouter.ai/workspaces/default/keys](https://openrouter.ai/workspaces/default/keys) → *Create key*. Uma chave dá acesso a Claude, GPT e Gemini. |
 | **Microfone** | Ou use **entrada manual**: cole o trecho falado no campo de texto e ele segue o mesmo pipeline. |
 
 ### Passo a passo
@@ -76,8 +78,10 @@ copy .env.example .env
 Abra o arquivo num editor de texto e deixe a linha assim — sem aspas, sem espaço depois do `=`:
 
 ```
-OPENROUTER_API_KEY=sk-or-v1-...
+GEMINI_API_KEY=AIza...
 ```
+
+Se preferir o OpenRouter, use `OPENROUTER_API_KEY=sk-or-v1-...` e troque o provedor nas configurações.
 
 O `.env` fica só na sua máquina (`/.gitignore` já o exclui) e **nunca é enviado ao navegador**: o
 `server.js` guarda a chave e faz o proxy das chamadas.
@@ -97,7 +101,8 @@ Saída esperada:
   naubert-bot · checagem ao vivo
   http://localhost:8787
 
-  OpenRouter:  sk-or-v1-…abcd
+  Gemini:      AIza…wxyz
+  OpenRouter:  ausente (opcional)
   Anthropic:   ausente (opcional)
 ```
 
@@ -115,7 +120,8 @@ fica bloqueado.
 **6. Faça o teste de fumaça (sem gastar API)**
 
 - Clique em **Simulação** → a tela inteira se mexe: transcrição, cartões, duotone, fonte.
-- Abra **Configurações → testar conexão** → deve aparecer “proxy ativo · openrouter · chave sk-or-v1-…”.
+- Abra **Configurações → testar conexão** → deve aparecer “Gemini ok · chave válida · gemini-3.8-flash
+  disponível”. Esse teste usa `GET /v1beta/models`: confere a chave **sem gastar token**.
 
 **7. Configure para o debate de verdade**
 
@@ -123,10 +129,9 @@ Em **Configurações**:
 
 1. cole o **link do vídeo** (YouTube renderiza embutido; Globo Play abre em janela externa);
 2. revise a **lista de veículos** (presets prontos, ou cole os seus domínios);
-3. confira o **modelo** — `anthropic/claude-opus-5.5` é o padrão e
-   `anthropic/claude-haiku-5.5` faz a triagem. O botão **listar modelos** busca o catálogo do OpenRouter
-   e preenche o campo com os preços;
-3b. escolha a **entrada de áudio**: *microfone* (Web Speech) ou *áudio da aba* (captura + Whisper), se o
+3. confira o **modelo** — `gemini-3.8-flash` é o padrão e `gemini-3.1-flash-lite` faz a triagem. No
+   OpenRouter, `anthropic/claude-opus-5.5` é o padrão e o botão **listar modelos** busca o catálogo;
+3b. escolha a **entrada de áudio**: *microfone* (Web Speech) ou *áudio da aba* (captura + STT), se o
    microfone não ouve o debate;
 4. escolha a **engine de busca** (`automático` já usa a busca nativa do Claude) e quantos resultados
    por busca;
@@ -141,7 +146,7 @@ clique em **janela flutuante** e arraste a janelinha para cima do vídeo.
 |---|---|
 | `npm: command not found` | Instale o Node em [nodejs.org](https://nodejs.org) e reabra o terminal. |
 | `Port 8787 already in use` | Use outra porta: `PORT=9090 npm start` (mac/Linux), `set PORT=9090 && npm start` (cmd) ou `$env:PORT=9090; npm start` (PowerShell). Depois abra `http://localhost:9090`. |
-| `OpenRouter: AUSENTE` no terminal | O servidor imprime logo abaixo o caminho exato do `.env` que ele procurou. Se o arquivo estiver em outra pasta (típico de ZIP extraído duas vezes, pasta dentro de pasta), crie o `.env` ao lado do `package.json` e do `server.js`. O `.env` é **lido só ao iniciar**: edite e rode `npm start` de novo. |
+| `Gemini: AUSENTE` no terminal | O servidor imprime logo abaixo o caminho exato do `.env` que ele procurou. Se o arquivo estiver em outra pasta (típico de ZIP extraído duas vezes, pasta dentro de pasta), crie o `.env` ao lado do `package.json` e do `server.js`. O `.env` é **lido só ao iniciar**: edite e rode `npm start` de novo. |
 | “proxy inacessível” na página | O terminal do `npm start` foi fechado — suba de novo. |
 | Microfone bloqueado | Permita no cadeado da barra de endereço. Se a página estiver dentro de um preview embutido, abra em aba própria. |
 | Nada é transcrito | Primeiro clique em **testar microfone** (ao lado de *checar janela*). Se o medidor não mexer, o áudio não está chegando no navegador — veja o item abaixo. Se mexer e mesmo assim não sair texto, o problema é o serviço de reconhecimento do Google: abra `google.com` nesta mesma aba; VPN, DNS que filtra `google.com` e extensões bloqueadoras são as causas comuns. Enquanto isso, use **entrada manual**. |
@@ -151,6 +156,9 @@ clique em **janela flutuante** e arraste a janelinha para cima do vídeo.
 | Transcrição atrasada ou picada | A janela fecha em 260 caracteres ou 30 s. Diminua `chunkChars` nas configurações para 140 se o debate for rápido; o custo é mais chamadas. |
 | 401 na checagem | Chave inválida ou revogada: gere outra em [openrouter.ai/workspaces/default/keys](https://openrouter.ai/workspaces/default/keys) e atualize o `.env`. |
 | 402 na checagem | Sem créditos no OpenRouter. Recarregue em [openrouter.ai/credits](https://openrouter.ai/credits) ou troque para um modelo mais barato na triagem. |
+| “a busca do Google no Gemini precisa de faturamento” | O grounding não funciona no nível gratuito. Ative o faturamento no mesmo projeto da chave ([aistudio.google.com/apikey](https://aistudio.google.com/apikey) → projeto → *Billing*) ou volte para o OpenRouter. |
+| “GEMINI_API_KEY não configurada” | O `.env` não foi lido: confira o caminho impresso no boot, preencha `GEMINI_API_KEY=AIza…` e reinicie o servidor. |
+| “Chave válida, mas gemini-… não apareceu na lista” | O nome do modelo mudou ou não está liberado para a sua chave. Use **testar conexão** de novo e escolha um da lista. |
 
 ### Sobre a transcrição
 
@@ -190,7 +198,7 @@ do app — serve para conferir se o `CABLE Output` realmente apareceu.
 ### Rodar os testes
 
 ```bash
-npm test       # 36 testes da auditoria, do pipeline e do adaptador do OpenRouter
+npm test       # 44 testes da auditoria, do pipeline e dos adaptadores (Gemini, OpenRouter, Anthropic)
 npm run check  # sintaxe de todos os arquivos + testes
 ```
 
@@ -201,8 +209,8 @@ npm run check  # sintaxe de todos os arquivos + testes
 | Etapa | O que acontece | Onde está no código |
 |---|---|---|
 | Transcrição | O Chrome transcreve a fala; o segmentador fecha janelas de ~260 caracteres ou 30 s, o que vier primeiro, e guarda as últimas frases como contexto | `assets/js/speech.js` |
-| Triagem | O Claude recebe o trecho e devolve afirmações classificadas como `checavel`, `opiniao`, `previsao`, `promessa`, `pergunta` ou `ataque_pessoal`, com prioridade de 1 a 3 | `assets/js/pipeline.js` |
-| Verificação | Cada afirmação checável vira uma busca limitada por `allowed_domains` à sua lista de veículos, seguida de um julgamento com a lista fechada de URLs encontradas | `assets/js/providers.js` |
+| Triagem | O modelo da triagem recebe o trecho e devolve afirmações classificadas como `checavel`, `opiniao`, `previsao`, `promessa`, `pergunta` ou `ataque_pessoal`, com prioridade de 1 a 3 | `assets/js/pipeline.js` |
+| Verificação | Cada afirmação checável vira uma busca entre os veículos da sua lista, seguida de um julgamento com a lista fechada de fontes encontradas | `assets/js/providers.js` |
 | Auditoria | Confere se cada URL citada apareceu nos resultados da busca, se o domínio está na lista e se o modelo a citou | `assets/js/audit.js` |
 | Resultado | Duotone no vídeo, cartão sobreposto, lista lateral com fonte, trecho, confiança e latência | `assets/js/ui.js` |
 | Custo | Contador de chamadas, buscas e custo em dólar (usa o `usage.cost` do OpenRouter quando existe) | `assets/js/pipeline.js` |
@@ -224,18 +232,43 @@ gastar uma busca, e é isso que torna o sistema mais lento que um “detector”
 
 ---
 
-## OpenRouter (padrão) e Anthropic direta
+## Gemini (padrão), OpenRouter e Anthropic direta
 
 A interface da página é a mesma; o que muda é o transporte e o formato da busca.
 
-| | OpenRouter | Anthropic direto |
-|---|---|---|
-| Endpoint | `POST /api/v1/chat/completions` (formato OpenAI) | `POST /v1/messages` |
-| Chave | `sk-or-v1-…` (dá acesso a vários modelos) | `sk-ant-…` |
-| Busca | ferramenta `openrouter:web_search` | ferramenta `web_search_20250305` |
-| Filtro | `allowed_domains` nos parâmetros da ferramenta | `allowed_domains` na definição da ferramenta |
-| Citações | `message.annotations[]` (`url_citation`) | blocos `web_search_tool_result` |
-| Chamadas por afirmação | **duas**: busca e depois julgamento | uma |
+| | Gemini | OpenRouter | Anthropic direto |
+|---|---|---|---|
+| Endpoint | `POST /v1beta/models/{model}:generateContent` | `POST /api/v1/chat/completions` (formato OpenAI) | `POST /v1/messages` |
+| Chave | `AIza…` do AI Studio | `sk-or-v1-…` (dá acesso a vários modelos) | `sk-ant-…` |
+| Busca | ferramenta `google_search` (grounding) | ferramenta `openrouter:web_search` | ferramenta `web_search_20250305` |
+| Filtro de domínio | **não existe** na API do Google — a lista vai no prompt e é aplicada na auditoria | `allowed_domains` nos parâmetros da ferramenta | `allowed_domains` na definição da ferramenta |
+| Citações | `groundingMetadata.groundingChunks[]` / `groundingSupports[]` | `message.annotations[]` (`url_citation`) | blocos `web_search_tool_result` |
+| Chamadas por afirmação | **duas**: busca e depois julgamento | **duas**: busca e depois julgamento | uma |
+
+### O caso do Gemini
+
+O Gemini é o padrão porque é o mais barato hoje e porque a busca do Google é boa para números e datas.
+Duas particularidades mudam o desenho:
+
+1. **A busca precisa de faturamento.** O grounding do Google Search não funciona no nível gratuito. Sem
+   faturamento no projeto, a chamada falha e o app para com uma mensagem explicando exatamente isso —
+   não adianta trocar de modelo. A assinatura **Google AI Pro/Ultra não inclui chave de API**: os
+   benefícios valem dentro do site do AI Studio; uso por chave é cobrado à parte.
+2. **Não há filtro de domínio.** `excludeDomains`/`includeDomains` só existem no Vertex AI, não na Gemini
+   Developer API. Então a lista de veículos entra **no prompt** ("priorize estes veículos") e é aplicada
+   **na auditoria**: fonte cujo domínio não está na lista vira `fora_da_lista` e o veredito é rebaixado.
+
+E o detalhe que quebraria a auditoria: o `uri` de cada fonte do grounding é um **redirecionador**
+(`vertexaisearch.cloud.google.com/...`), não o domínio do veículo. O domínio real vem em `web.title`. O
+adaptador guarda os dois (`url` para o link, `domain` para a lista) e a auditoria usa o `domain` quando
+presente. Sem isso, toda fonte do Gemini seria "fora da lista".
+
+Também por isso a checagem no Gemini é em **duas chamadas**: a busca roda sem schema JSON (pedir JSON
+junto com a busca tende a apagar as anotações de grounding), e só depois o julgamento recebe a lista
+fechada de fontes e devolve o veredito validado por `responseSchema`.
+
+Preço: Gemini 3.8 Flash a US$ 0,75/1M de entrada e 3,75/1M de saída; triagem no 3.1 Flash-Lite
+(0,25/1,50). A busca é cobrada por consulta: 5.000/mês grátis com billing ativo, depois US$ 14/1.000.
 
 No OpenRouter a verificação é dividida em duas chamadas porque structured outputs e busca na mesma
 requisição fazem o provedor **suprimir as anotações** de citação — e sem anotação não há auditoria. Então:
@@ -249,7 +282,7 @@ Se o endpoint recusar a server tool (`400`/`404`/`422` falando de `tool`), o có
 plugin legado `{"id":"web", "include_domains":[...]}`, que também devolve `url_citation`. Se a conta recusar
 structured outputs, o julgamento é repetido sem schema e o JSON é lido de forma tolerante.
 
-### Engines de busca
+### Engines de busca (OpenRouter)
 
 O campo **engine** decide quem executa a busca no OpenRouter:
 
@@ -287,23 +320,27 @@ getDisplayMedia({audio}) ──► AudioContext ──► MediaRecorder (webm/op
 
 Como usar:
 
-1. **Configurações → Entrada de áudio** → *áudio da aba · captura + Whisper* → **salvar**;
+1. **Configurações → Entrada de áudio** → *áudio da aba · captura + STT* → **salvar**;
 2. clique em **Iniciar escuta** — o Chrome abre o seletor de compartilhamento;
 3. escolha a **aba do debate** e marque **“Compartilhar áudio da aba”** (a caixa aparece embaixo do
    botão *Compartilhar*; sem ela a página avisa que veio sem áudio);
 4. deixe o vídeo tocando. O indicador do topo mostra `ouvindo a aba` e o medidor reage ao som.
 
-O trecho é enviado em base64 para o proxy local, que repassa ao endpoint de transcrição do OpenRouter com
-a **mesma chave**. Escolha o modelo em **Modelo de transcrição**:
+O trecho é enviado em base64 para o proxy local, que repassa ao serviço escolhido. Com o provedor
+**Gemini**, o áudio vai inline no `generateContent` (`inline_data`) do modelo de transcrição — não precisa
+de chave do OpenRouter. Com OpenRouter/Anthropic, usa-se `/audio/transcriptions` do OpenRouter.
 
-| Modelo | US$ por segundo | Quando usar |
+| Modelo | Custo | Quando usar |
 |---|---|---|
-| `openai/whisper-1` | 0,0001 | padrão; 6 s ≈ US$ 0,0006 |
-| `openai/whisper-large-v3-turbo` | ~0,00004 | mais rápido e barato |
-| `openai/gpt-4o-transcribe` | 0,0001 | melhor em nomes próprios e números |
-| `google/chirp-3` | 0,0001 | áudio de transmissão |
+| `gemini-3.5-transcribe` | tokens de áudio do Gemini | padrão no Gemini; feito para áudio |
+| `gemini-3.8-flash` | US$ 0,75/1M de entrada | reusa o modelo da checagem |
+| `openai/whisper-1` | US$ 0,0001/s (~0,0006 por 6 s) | padrão no OpenRouter |
+| `openai/whisper-large-v3-turbo` | ~0,00004/s | mais rápido e barato |
+| `openai/gpt-4o-transcribe` | 0,0001/s | melhor em nomes próprios e números |
+| `google/chirp-3` | 0,0001/s | áudio de transmissão |
 
-Um debate de duas horas custa entre **US$ 0,30 e US$ 0,70** só de transcrição. O contador da tela soma
+No OpenRouter, um debate de duas horas custa entre **US$ 0,30 e US$ 0,70** só de transcrição; no Gemini,
+conta como entrada de áudio do modelo escolhido. O contador da tela soma
 isso ao custo das checagens.
 
 **Atraso:** trecho de 6 s + envio + transcrição ≈ 7–10 s até o texto aparecer; a checagem soma mais
@@ -312,8 +349,8 @@ não coopera.
 
 **Limites honestos:**
 
-- o áudio é enviado ao OpenRouter e transcrito lá (o mesmo destino das chamadas de checagem) — não
-  fique nesse modo se o áudio for confidencial;
+- o áudio é enviado ao provedor escolhido (Gemini ou OpenRouter) e transcrito lá — não fique nesse modo
+  se o áudio for confidencial;
 - **abas com DRM** (Globo Play, alguns players) podem ir em preto/mudo para a captura; com YouTube
   funciona;
 - capture **somente a aba do debate**: se você compartilhar a aba inteira com notificações, elas entram
@@ -384,7 +421,16 @@ Nada de “procure na web e me diga”: a ferramenta recebe a lista fechada de d
 }
 ```
 
-Na Anthropic direta, o equivalente é:
+No Gemini não há campo de filtro — a lista entra no texto da busca:
+
+```
+Busque o dado e resuma o que as fontes mostram.
+Veículos que devem ser priorizados na busca (o veredito só pode se apoiar neles):
+g1.globo.com, folha.uol.com.br, ibge.gov.br
+```
+
+E a auditoria aplica a lista sobre o `domain` que veio no grounding. Na Anthropic direta, o equivalente ao
+`allowed_domains` do OpenRouter é:
 
 ```json
 {
@@ -435,10 +481,27 @@ nunca afirma “verdadeiro” ou “falso” sem uma fonte que tenha voltado da 
 
 ## Modelos, custo e configuração
 
-O padrão é `anthropic/claude-opus-5.5`. A triagem pode usar um modelo mais barato
+O padrão é **Gemini 3.8 Flash** para a checagem e **Gemini 3.1 Flash-Lite** para a triagem. OpenRouter e
+Anthropic continuam disponíveis nas configurações e continuam sendo a saída quando não há faturamento no
+projeto do Google.
+
+No OpenRouter o padrão é `anthropic/claude-opus-5.5`. A triagem pode usar um modelo mais barato
 (`anthropic/claude-haiku-5.5`) para reduzir custo, já que ela só classifica texto. O campo
-**modelo do julgamento** permite ainda usar um modelo forte só no veredito. O botão **listar modelos**
-puxa o catálogo do OpenRouter por um proxy e preenche o seletor com os preços de cada um.
+**modelo do julgamento** permite ainda usar um modelo forte só no veredito — vale para Gemini também.
+O botão **listar modelos** puxa o catálogo do OpenRouter por um proxy e preenche o seletor com os
+preços de cada um.
+
+Preços de referência do Gemini (outubro de 2026, por 1M de tokens):
+
+| Modelo | Entrada | Saída | Uso no app |
+|---|---|---|---|
+| `gemini-3.8-flash` | US$ 0,75 | US$ 3,75 | checagem (padrão até 31/12/2026) |
+| `gemini-3.1-flash-lite` | US$ 0,25 | US$ 1,50 | triagem (padrão) |
+| `gemini-3.1-pro-preview` | US$ 2,00 | US$ 12,00 | sem nível gratuito |
+| `gemini-4-argon` | US$ 2,00 | US$ 10,00 | topo de linha |
+
+A busca do Google custa por consulta: 5.000/mês grátis com faturamento ativo, depois **US$ 14/1.000**
+(US$ 0,014 por busca). Uma checagem no Gemini com busca sai por **US$ 0,02–0,04**.
 
 Preços de referência (OpenRouter, outubro de 2026):
 
@@ -457,14 +520,14 @@ prefere o `usage.cost` que o OpenRouter devolve em cada resposta.
 
 | Campo | Padrão | Efeito |
 |---|---|---|
-| `provider` | OpenRouter | transporte e formato das chamadas |
+| `provider` | Gemini | transporte e formato das chamadas |
 | `chunkChars` / `chunkSeconds` | 260 / 30 s | tamanho da janela de transcrição |
 | `concurrency` | 2 | checagens simultâneas; acima de 3 aumenta risco de 429 |
 | `minPriority` | 2 | 1 = só o que é central; 3 = tudo, inclusive detalhe |
-| `searchEngine` | `auto` | quem executa a busca no OpenRouter |
+| `searchEngine` | `auto` | quem executa a busca no OpenRouter (ignorado no Gemini) |
 | `maxResults` | 5 | resultados por busca |
 | `maxUses` | 4 | teto de buscas por afirmação |
-| `model` / `triageModel` / `judgeModel` | Opus 5.5 / Haiku 5.5 / vazio | modelo de cada etapa |
+| `model` / `triageModel` / `judgeModel` | Flash 3.8 / Flash-Lite 3.1 / vazio | modelo de cada etapa |
 | `duotoneHold` | 14 s | quanto tempo o vídeo fica colorido |
 | `autoDuotone` | ligado | desliga se você só quiser os cartões |
 
@@ -522,7 +585,7 @@ assets/js/providers.js     adaptadores: triagem, busca e julgamento de cada prov
 assets/js/audit.js         auditoria de fontes (o núcleo anti-invenção)
 assets/js/pipeline.js      fila, dedupe, concorrência, custo
 assets/js/speech.js        Web Speech API, medidor de microfone + segmentador de janelas
-assets/js/audio.js         captura do áudio da aba + transcrição (Whisper do OpenRouter)
+assets/js/audio.js         captura do áudio da aba + transcrição (Gemini ou OpenRouter)
 assets/js/pip.js           janela flutuante (Document Picture-in-Picture)
 assets/js/demo.js          simulação sem API
 assets/js/ui.js            cartões, flash, duotone, ajustes, exportação

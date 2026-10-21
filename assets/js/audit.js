@@ -90,7 +90,7 @@
             var key = normUrl(r.url);
             if (seenUrl[key]) return;
             seenUrl[key] = true;
-            ev.results.push({ url: r.url, title: r.title || '', pageAge: r.page_age || '' });
+            ev.results.push({ url: r.url, title: r.title || '', pageAge: r.page_age || '', domain: r.domain || '' });
           });
           return;
         }
@@ -158,18 +158,30 @@
     ev.citations.forEach(function (c) {
       citedSet[normUrl(c.url)] = true;
     });
+    // Domínio real por URL, quando o provedor entrega isso separado do link —
+    // é o caso do grounding do Gemini, cujo `uri` é um redirecionador.
+    var domainSet = Object.create(null);
+    ev.results.forEach(function (r) {
+      if (r.domain) domainSet[normUrl(r.url)] = String(r.domain);
+    });
 
     var items = sources.map(function (s) {
       var url = String((s && s.url) || '').trim();
       var title = String((s && s.titulo) || (s && s.title) || '').trim();
-      var host = url ? NB.outlets.hostOf(url) : '';
+      // O grounding do Gemini devolve um redirecionador do Google e o domínio
+      // do veículo em `title`. Quando o adaptador marca `domain`, é ele que
+      // vale para a lista — a URL continua servindo de link.
+      var domain = String((s && (s.domain || s.dominio)) || '').trim();
+      if (!domain && url) domain = domainSet[normUrl(url)] || '';
+      var domainUrl = domain ? (/^https?:\/\//i.test(domain) ? domain : 'https://' + domain) : '';
+      var host = domainUrl ? NB.outlets.hostOf(domainUrl) : url ? NB.outlets.hostOf(url) : '';
       var item = {
         url: url,
         titulo: title,
-        veiculo: (s && s.veiculo) || (url ? NB.outlets.outletName(url) : ''),
+        host: host,
+        veiculo: (s && s.veiculo) || (host ? NB.outlets.outletName('https://' + host) : ''),
         data: (s && s.data) || '',
         trecho: (s && s.trecho) || '',
-        host: host,
         domainOk: false,
         seenInSearch: false,
         citedByModel: false,
@@ -183,13 +195,13 @@
         return item;
       }
 
-      item.domainOk = NB.outlets.matchesAllowed(url, allowed);
+      item.domainOk = NB.outlets.matchesAllowed(domainUrl || url, allowed);
       item.seenInSearch = !!seenSet[normUrl(url)] || (title ? !!titleSet[normTitle(title)] : false);
       item.citedByModel = !!citedSet[normUrl(url)];
 
       if (!item.domainOk) {
         item.status = 'fora_da_lista';
-        item.motivo = item.host + ' não está em allowed_domains';
+        item.motivo = (item.host || 'a fonte') + ' não está em allowed_domains';
       } else if (!item.seenInSearch) {
         item.status = 'nao_vista_na_busca';
         item.motivo = 'não apareceu nos resultados desta busca — fonte possivelmente inventada';

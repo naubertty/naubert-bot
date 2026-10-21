@@ -209,15 +209,23 @@
       <section class="fieldset">
         <h3>Provedor e conexão</h3>
         <p class="help">
-          O <b>OpenRouter</b> dá acesso a vários modelos com uma chave só, incluindo os Claude. A opção
-          <b>Anthropic (direto)</b> usa a Messages API nativa. Em qualquer um dos dois, o modo proxy mantém a
-          chave no servidor — é o recomendado.
+          O <b>Gemini</b> usa a chave do Google AI Studio e busca com o Google Search. O <b>OpenRouter</b> dá
+          acesso a vários modelos com uma chave só, incluindo os Claude. A opção <b>Anthropic (direto)</b>
+          usa a Messages API nativa. Em todos, o modo proxy mantém a chave no servidor — é o recomendado.
+        </p>
+        <p class="help help-warn" id="geminiNotice" hidden>
+          A assinatura <b>Google AI Pro</b> não inclui chave de API: o Gemini API é cobrado à parte, por uso.
+          O que a assinatura dá é <b>US$ 10/mês em créditos do Google Cloud</b> e cota maior no AI Studio.
+          Além disso, a <b>busca com Google Search exige faturamento ativado</b> no projeto — no nível
+          gratuito ela não funciona, e sem busca não há checagem. Crie a chave em
+          <b>aistudio.google.com/apikey</b> e ative o faturamento no mesmo projeto.
         </p>
 
         <div class="row">
           <label class="field">
             <span>Provedor</span>
             <select id="f-provider">
+              <option value="gemini">Gemini (Google)</option>
               <option value="openrouter">OpenRouter</option>
               <option value="anthropic">Anthropic (direto)</option>
             </select>
@@ -239,6 +247,13 @@
           <label class="field field-wide">
             <span>Token do proxy (opcional)</span>
             <input id="f-proxyToken" type="password" placeholder="só se você definiu PROXY_TOKEN" autocomplete="off" spellcheck="false">
+          </label>
+        </div>
+
+        <div class="row" id="rowGeminiKey" hidden>
+          <label class="field field-wide">
+            <span>Chave do Gemini (fica no navegador)</span>
+            <input id="f-geminiKey" type="password" placeholder="AIza..." autocomplete="off" spellcheck="false">
           </label>
         </div>
 
@@ -346,15 +361,15 @@
         <p class="help">
           O microfone usa a Web Speech API do Chrome: instantâneo e gratuito, mas depende do serviço do
           Google e só escuta o dispositivo de entrada. O <b>áudio da aba</b> captura o som do próprio
-          vídeo (YouTube embutido ou qualquer aba) e transcreve com o Whisper do OpenRouter — é a opção
-          quando o microfone não ouve o debate.
+          vídeo (YouTube embutido ou qualquer aba) e transcreve num serviço de STT — no Gemini o áudio vai
+          direto no modelo (sem chave do OpenRouter), nos outros provedores é o Whisper do OpenRouter.
         </p>
         <div class="row">
           <label class="field">
             <span>De onde vem o som</span>
             <select id="f-transcribeMode">
               <option value="mic">microfone · Web Speech API</option>
-              <option value="tab">áudio da aba · captura + Whisper</option>
+              <option value="tab">áudio da aba · captura + STT</option>
             </select>
           </label>
           <label class="field">
@@ -369,7 +384,8 @@
         <p class="help" id="tabAudioHelp">
           Na captura de aba, o Chrome pede para escolher a aba: selecione a do debate e marque
           <b>“Compartilhar áudio da aba”</b>. O vídeo pode ficar em outra janela — o som é o que importa.
-          Cada trecho custa cerca de US$ 0,0006 no Whisper 1 (6 s a US$ 0,0001/s).
+          Cada trecho custa cerca de US$ 0,0006 no Whisper 1 (6 s a US$ 0,0001/s); no Gemini, o áudio
+          entra como tokens de entrada do modelo escolhido.
         </p>
       </section>
 
