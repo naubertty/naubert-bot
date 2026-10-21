@@ -46,12 +46,16 @@ Claude, GPT e Gemini. A Anthropic direta continua disponível como alternativa.
 
 **1. Baixe o projeto e entre na pasta**
 
+O código desta versão está no branch `arena/611d6f36-naubert-bot` (a `main` do repositório ainda tem só o
+README). Clone já apontando para ele:
+
 ```bash
-git clone https://github.com/naubertty/naubert-bot.git
+git clone -b arena/611d6f36-naubert-bot https://github.com/naubertty/naubert-bot.git
 cd naubert-bot
 ```
 
-Sem Git? Use **Code → Download ZIP** no GitHub e descompacte.
+Sem Git? No GitHub, troque o seletor de branch para `arena/611d6f36-naubert-bot`, depois
+**Code → Download ZIP** e descompacte.
 
 **2. Crie o arquivo `.env`**
 
