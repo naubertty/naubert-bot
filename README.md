@@ -26,18 +26,120 @@ de imprensa e mostra o resultado **sobre o vídeo**, com um duotone verde ou ver
 
 ---
 
-## Em 30 segundos
+## Como rodar na sua máquina
+
+### Você precisa de
+
+| Item | Detalhe |
+|---|---|
+| **Node.js 18+** | [nodejs.org](https://nodejs.org) — confira com `node -v`. O projeto **não tem dependências**, então não é preciso `npm install`. |
+| **Chrome ou Edge** no desktop | A Web Speech API não existe no Firefox nem no Safari. No celular, o Chrome também não transcreve de forma confiável. |
+| **Chave da API da Anthropic** | Em [console.anthropic.com](https://console.anthropic.com) → *API Keys*. É paga por uso: uma checagem custa alguns centavos de dólar (veja [Custo](#modelos-custo-e-configuração)). |
+| **Microfone** | Ou use **entrada manual**: cole o trecho falado no campo de texto e ele segue o mesmo pipeline. |
+
+### Passo a passo
+
+**1. Baixe o projeto e entre na pasta**
 
 ```bash
-cp .env.example .env      # cole sua ANTHROPIC_API_KEY
-npm start                 # http://localhost:8787
+git clone https://github.com/naubertty/naubert-bot.git
+cd naubert-bot
 ```
 
-Abra a página, clique em **Simulação** para ver a tela funcionando sem gastar API.
-Depois, em **Configurações**, cole o link do vídeo, ajuste os veículos permitidos e clique em **Iniciar escuta**.
+Sem Git? Use **Code → Download ZIP** no GitHub e descompacte.
 
-Requisitos: Node 18+ (o servidor não tem dependências) e Chrome ou Edge no desktop (a Web Speech API não
-existe no Firefox nem no Safari mobile).
+**2. Crie o arquivo `.env`**
+
+macOS e Linux:
+
+```bash
+cp .env.example .env
+```
+
+Windows (Prompt de Comando ou PowerShell):
+
+```bat
+copy .env.example .env
+```
+
+**3. Coloque sua chave dentro do `.env`**
+
+Abra o arquivo num editor de texto e deixe a linha assim — sem aspas, sem espaço depois do `=`:
+
+```
+ANTHROPIC_API_KEY=sk-ant-api03-...
+```
+
+O `.env` fica só na sua máquina (`/.gitignore` já o exclui) e **nunca é enviado ao navegador**: o
+`server.js` guarda a chave e faz o proxy das chamadas.
+
+**4. Suba o servidor**
+
+```bash
+npm start
+```
+
+Saída esperada:
+
+```
+  naubert-bot · checagem ao vivo
+  http://localhost:8787
+
+  chave da API: sk-ant-…abcd
+```
+
+Essa janela do terminal precisa ficar aberta. `Ctrl+C` encerra.
+
+**5. Abra no Chrome**
+
+```
+http://localhost:8787
+```
+
+Não abra o `index.html` com dois cliques (`file://`): sem servidor o proxy não funciona e o microfone
+fica bloqueado.
+
+**6. Faça o teste de fumaça (sem gastar API)**
+
+- Clique em **Simulação** → a tela inteira se mexe: transcrição, cartões, duotone, fonte.
+- Abra **Configurações → testar conexão** → deve aparecer “proxy ok · chave sk-ant-…”.
+
+**7. Configure para o debate de verdade**
+
+Em **Configurações**:
+
+1. cole o **link do vídeo** (YouTube renderiza embutido; Globo Play abre em janela externa);
+2. revise a **lista de veículos** (presets prontos, ou cole os seus domínios);
+3. escolha o **modelo** — Opus 5.5 é o padrão; Haiku 5.5 na triagem reduz o custo;
+4. **salvar**.
+
+De volta à tela, clique em **Iniciar escuta** e autorize o microfone. Se estiver usando a Globo Play,
+clique em **janela flutuante** e arraste a janelinha para cima do vídeo.
+
+### Se algo der errado
+
+| Situação | O que fazer |
+|---|---|
+| `npm: command not found` | Instale o Node em [nodejs.org](https://nodejs.org) e reabra o terminal. |
+| `Port 8787 already in use` | Use outra porta: `PORT=9090 npm start` (mac/Linux), `set PORT=9090 && npm start` (cmd) ou `$env:PORT=9090; npm start` (PowerShell). Depois abra `http://localhost:9090`. |
+| “proxy sem ANTHROPIC_API_KEY” | O `.env` não existe, está na pasta errada ou a chave está vazia. O servidor **lê o `.env` só ao iniciar**: edite e rode `npm start` de novo. |
+| “proxy inacessível” na página | O terminal do `npm start` foi fechado — suba de novo. |
+| Microfone bloqueado | Permita no cadeado da barra de endereço. Se a página estiver dentro de um preview embutido, abra em aba própria. |
+| Nada é transcrito | Use Chrome/Edge; a transcrição depende dos servidores do Google e de internet. Teste com **entrada manual**. |
+| 401 na checagem | Chave inválida ou revogada: gere outra no console e atualize o `.env`. |
+
+### Onde ficam as configurações
+
+- **Chave da API e porta** → `.env`, na pasta do projeto (só no servidor).
+- **Modelo, veículos, ritmo, vídeo, duotone** → `localStorage` do seu navegador, por navegador e por perfil.
+  O botão **restaurar padrões** nas configurações volta tudo ao início.
+
+### Rodar os testes
+
+```bash
+npm test     # 22 testes da auditoria e do pipeline
+npm run check  # sintaxe de todos os arquivos + testes
+```
 
 ---
 
