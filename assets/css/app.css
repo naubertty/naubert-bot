@@ -520,6 +520,7 @@ a { color: inherit; }
   scroll-behavior: smooth;
 }
 .t-final { color: var(--text); }
+.t-pending { color: #cfd8e3; }
 .t-interim { color: var(--text-mute); font-style: italic; }
 .t-caret {
   display: inline-block; width: 6px; height: 14px; margin-left: 2px;

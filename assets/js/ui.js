@@ -93,6 +93,7 @@
       holdIndicator: $('holdIndicator'),
       tMeta: $('tMeta'),
       tFinal: $('tFinal'),
+      tPending: $('tPending'),
       tInterim: $('tInterim'),
       tCaret: $('tCaret'),
       transcriptBody: $('transcriptBody'),
@@ -429,7 +430,18 @@
     lastFinal = (lastFinal ? lastFinal + ' ' : '') + clean;
     if (lastFinal.length > 2400) lastFinal = lastFinal.slice(-2400);
     el.tFinal.textContent = lastFinal;
+    el.tPending.textContent = '';
     el.tInterim.textContent = '';
+    scrollTranscript();
+  };
+
+  /**
+   * Texto já reconhecido que ainda não fechou a janela. Sem isso a tela fica
+   * vazia por até 30 s mesmo com o reconhecimento funcionando — o usuário
+   * conclui que a transcrição não está funcionando.
+   */
+  UI.transcriptPending = function (text) {
+    el.tPending.textContent = text ? ' ' + text : '';
     scrollTranscript();
   };
 
@@ -445,6 +457,7 @@
   UI.transcriptClear = function () {
     lastFinal = '';
     el.tFinal.textContent = '';
+    el.tPending.textContent = '';
     el.tInterim.textContent = '';
   };
 

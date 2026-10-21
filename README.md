@@ -168,6 +168,15 @@ dispositivo. Isso separa as duas falhas:
 O nome da entrada em uso aparece na linha da transcrição e a lista completa de entradas fica no console
 do app — serve para conferir se o `CABLE Output` realmente apareceu.
 
+**O que a tela mostra enquanto escuta:**
+
+| Situação | O que aparece |
+|---|---|
+| reconhecendo | as palavras surgem em claro assim que o Chrome devolve cada frase (antes de a janela fechar), e a linha de cima mostra `janela aberta · 84/260 caracteres` |
+| janela fechada | o trecho passa para o histórico da transcrição e vai para a triagem |
+| áudio chegando, nada reconhecido | a linha de cima conta `ouvindo há N s · nenhuma fala reconhecida ainda`; aos 25 s o app abre o painel de loopback e explica que o controle de eco do Chrome descarta o som do alto-falante |
+| silêncio longo depois de já ter transcrito | `silêncio de N s desde a última fala reconhecida` no console do app |
+
 ### Onde ficam as configurações
 
 - **Chave da API e porta** → `.env`, na pasta do projeto (só no servidor).

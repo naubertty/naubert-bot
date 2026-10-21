@@ -104,6 +104,61 @@
     if (NB.Mic) NB.Mic.close();
   }
 
+  var watchTimer = null;
+  var watchStartedAt = 0;
+  var watchWarned = false;
+  var sawAnyText = false;
+
+  function startWatchdog() {
+    stopWatchdog();
+    watchStartedAt = Date.now();
+    watchWarned = false;
+    sawAnyText = false;
+    watchTimer = setInterval(function () {
+      if (!speech.recording) return;
+      var secs = Math.round((Date.now() - watchStartedAt) / 1000);
+      var st = typeof speech.status === 'function' ? speech.status() : {};
+
+      if (st.sinceResult !== null && st.sinceResult !== undefined && st.sinceResult < 60000) sawAnyText = true;
+
+      if (sawAnyText) {
+        if (secs > 20 && !watchWarned && st.sinceResult > 12000) {
+          watchWarned = true;
+          NB.UI.log('warn', 'silêncio de ' + Math.round(st.sinceResult / 1000) + ' s desde a última fala reconhecida');
+        }
+        return;
+      }
+
+      NB.UI.transcriptMeta('ouvindo há ' + secs + ' s · nenhuma fala reconhecida ainda');
+
+      if (secs >= 25 && !watchWarned) {
+        watchWarned = true;
+        showMicHelp(true);
+        NB.UI.log(
+          'warn',
+          'o microfone recebe áudio (veja o medidor) mas o Chrome não reconhece voz em ' +
+            secs +
+            ' s — típico de áudio de alto-falante cancelado pelo controle de eco'
+        );
+        NB.UI.toast(
+          'O medidor mostra áudio, mas o Chrome não reconhece fala há 25 s. Isso é o controle de eco ' +
+            'tratando o som do vídeo como eco. Abri as opções abaixo da transcrição — o caminho é o ' +
+            'VB-Cable (loopback), que entrega o áudio do debate direto ao Chrome. Enquanto isso, a ' +
+            'entrada manual funciona.',
+          'err',
+          18000
+        );
+      }
+    }, 2000);
+  }
+
+  function stopWatchdog() {
+    clearInterval(watchTimer);
+    watchTimer = null;
+    watchWarned = false;
+    sawAnyText = false;
+  }
+
   function showMicHelp(show) {
     var panel = $('micHelp');
     if (!panel) return;
@@ -183,20 +238,29 @@
   function bindSpeech() {
     speech.on('state', function (s) {
       NB.UI.setMicStatus(!!s.recording, s.label);
-      if (s.recording) startMeter();
-      else stopMeter();
+      if (s.recording) {
+        startMeter();
+        startWatchdog();
+      } else {
+        stopMeter();
+        stopWatchdog();
+      }
     });
 
     speech.on('interim', function (p) {
+      if (p.text) sawAnyText = true;
       NB.UI.transcriptInterim(p.text);
     });
 
     speech.on('buffer', function (b) {
       if (!b.buffer) return;
+      sawAnyText = true;
+      NB.UI.transcriptPending(b.buffer);
       NB.UI.transcriptMeta('janela aberta · ' + b.buffer.length + '/' + store.state.chunkChars + ' caracteres');
     });
 
     speech.on('segment', function (win) {
+      sawAnyText = true;
       handleSegment(win);
     });
 
@@ -719,6 +783,8 @@
   }
 
   global.addEventListener('beforeunload', function () {
+    stopWatchdog();
+    stopMeter();
     if (speech) speech.destroy();
     if (demo) demo.stop();
     NB.Pip.close();

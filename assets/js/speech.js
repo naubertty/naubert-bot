@@ -90,6 +90,8 @@
     this.interim = '';
     this.errorCount = 0;
     this.networkFails = 0;   // falhas seguidas do serviço do Google
+    this.noSpeech = 0;       // eventos 'no-speech' seguidos (áudio sem fala reconhecível)
+    this.lastResultAt = 0;   // quando chegou o último texto, para o vigia do app
     this._manualStop = false;
     this.segmenter = new Segmenter({
       chunkChars: opts.chunkChars,
@@ -119,6 +121,8 @@
 
     this.rec.onresult = function (event) {
       self.networkFails = 0;
+      self.noSpeech = 0;
+      self.lastResultAt = Date.now();
       var interim = '';
       for (var i = event.resultIndex; i < event.results.length; i++) {
         var r = event.results[i];
@@ -135,7 +139,24 @@
     this.rec.onerror = function (event) {
       var err = event.error || 'desconhecido';
       self.errorCount++;
-      if (err === 'no-speech' || err === 'aborted') return;
+      if (err === 'aborted') return;
+      if (err === 'no-speech') {
+        self.noSpeech++;
+        // O Chrome descarta como ruído o áudio que sai pelo alto-falante: o
+        // cancelamento de eco trata a própria voz do vídeo como eco. Por isso
+        // "nível no medidor" e "nenhuma palavra" podem coexistir.
+        if (self.noSpeech === 1 || self.noSpeech % 5 === 0) {
+          self.emit('warn', {
+            code: err,
+            message:
+              'nenhuma fala reconhecida em ' +
+              self.noSpeech +
+              (self.noSpeech === 1 ? ' aviso' : ' avisos') +
+              ' — o Chrome está recebendo áudio, mas não identifica voz nele'
+          });
+        }
+        return;
+      }
       if (err === 'not-allowed' || err === 'service-not-allowed') {
         self.recording = false;
         self.emit('state', { recording: false, label: 'microfone bloqueado' });
@@ -241,6 +262,16 @@
   };
 
   /** Entrada manual/colada: mesma segmentação, sem microfone. */
+  /** Estado do reconhecimento, para o vigia da tela decidir quando avisar. */
+  Speech.prototype.status = function () {
+    return {
+      recording: this.recording,
+      noSpeech: this.noSpeech,
+      networkFails: this.networkFails,
+      sinceResult: this.lastResultAt ? Date.now() - this.lastResultAt : null
+    };
+  };
+
   Speech.prototype.feed = function (text) {
     this.segmenter.push(text);
   };
