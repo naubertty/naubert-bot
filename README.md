@@ -139,7 +139,7 @@ clique em **janela flutuante** e arraste a janelinha para cima do vídeo.
 |---|---|
 | `npm: command not found` | Instale o Node em [nodejs.org](https://nodejs.org) e reabra o terminal. |
 | `Port 8787 already in use` | Use outra porta: `PORT=9090 npm start` (mac/Linux), `set PORT=9090 && npm start` (cmd) ou `$env:PORT=9090; npm start` (PowerShell). Depois abra `http://localhost:9090`. |
-| “proxy sem OPENROUTER_API_KEY” | O `.env` não existe, está na pasta errada ou a chave está vazia. O servidor **lê o `.env` só ao iniciar**: edite e rode `npm start` de novo. |
+| `OpenRouter: AUSENTE` no terminal | O servidor imprime logo abaixo o caminho exato do `.env` que ele procurou. Se o arquivo estiver em outra pasta (típico de ZIP extraído duas vezes, pasta dentro de pasta), crie o `.env` ao lado do `package.json` e do `server.js`. O `.env` é **lido só ao iniciar**: edite e rode `npm start` de novo. |
 | “proxy inacessível” na página | O terminal do `npm start` foi fechado — suba de novo. |
 | Microfone bloqueado | Permita no cadeado da barra de endereço. Se a página estiver dentro de um preview embutido, abra em aba própria. |
 | Nada é transcrito | Use Chrome/Edge; a transcrição depende dos servidores do Google e de internet. Teste com **entrada manual**. |
@@ -469,7 +469,7 @@ substituir o checador.
 | “microfone bloqueado” | permissão negada ou página em `file://` | sirva por `http://localhost` ou https e permita o microfone no cadeado |
 | Nada é transcrito | Firefox/Safari ou Chrome sem rede | use Chrome/Edge; a Web Speech API depende dos servidores do Google |
 | “proxy inacessível” | servidor parado | `npm start` na raiz do projeto |
-| “proxy sem chave” | `.env` ausente | copie `.env.example`, preencha `OPENROUTER_API_KEY` e reinicie |
+| “proxy sem chave” | `.env` ausente ou em outra pasta | veja o caminho impresso pelo servidor, copie `.env.example` para lá, preencha e reinicie |
 | 401 | chave inválida | gere outra em openrouter.ai/workspaces/default/keys e reinicie o servidor |
 | 402 | créditos insuficientes no OpenRouter | recarregue em openrouter.ai/credits ou use modelo mais barato |
 | 404 “no endpoints found” | slug de modelo errado ou sem endpoint compatível | clique em **listar modelos** e copie o slug exato |

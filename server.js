@@ -22,7 +22,7 @@ const path = require('path');
 /* ------------------------------------------------------------------- env */
 
 function loadDotEnv(file) {
-  if (!fs.existsSync(file)) return;
+  if (!fs.existsSync(file)) return false;
   const text = fs.readFileSync(file, 'utf8');
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.trim();
@@ -39,6 +39,30 @@ function loadDotEnv(file) {
     }
     if (!(key in process.env)) process.env[key] = value;
   }
+  return true;
+}
+
+// O .env é lido da pasta do server.js — não do diretório em que o terminal está.
+const ENV_FILE = path.join(__dirname, '.env');
+const ENV_FOUND = loadDotEnv(ENV_FILE);
+
+// Quem extrai o ZIP duas vezes acaba com uma pasta dentro da outra e deixa o
+// .env no nível de cima. Em vez de falhar em silêncio, procuramos um .env
+// vizinho só para dar a dica certa no terminal.
+function envHint() {
+  let dir = __dirname;
+  for (let i = 0; i < 2; i += 1) {
+    dir = path.dirname(dir);
+    const candidate = path.join(dir, '.env');
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return '';
+}
+
+// O texto de exemplo do .env.example passa por chave preenchida: vale avisar.
+function looksPlaceholder(value) {
+  const v = String(value || '').trim();
+  return !v || /\.\.\.|…|<.*>|^sua[-_ ]?chave$/i.test(v);
 }
 
 loadDotEnv(path.join(__dirname, '.env'));
@@ -479,8 +503,22 @@ server.listen(PORT, HOST, () => {
   console.log('');
   console.log('  OpenRouter:  ' + (OPENROUTER_API_KEY ? maskKey(OPENROUTER_API_KEY) : 'AUSENTE'));
   console.log('  Anthropic:   ' + (API_KEY ? maskKey(API_KEY) : 'ausente (opcional)'));
+  console.log('');
+  console.log('  .env:        ' + (ENV_FOUND ? ENV_FILE : 'não encontrado em ' + ENV_FILE));
+  if (OPENROUTER_API_KEY && looksPlaceholder(OPENROUTER_API_KEY)) {
+    console.log('  ! a chave do OpenRouter parece ser o texto de exemplo — troque pelo valor real');
+  }
   if (!OPENROUTER_API_KEY && !API_KEY) {
-    console.log('  → cp .env.example .env  e coloque OPENROUTER_API_KEY (recomendado)');
+    if (!ENV_FOUND) {
+      const found = envHint();
+      console.log('  → crie ' + ENV_FILE + ' com OPENROUTER_API_KEY=sk-or-v1-…');
+      if (found) {
+        console.log('  ! existe um .env em ' + found);
+        console.log('    copie esse arquivo para a pasta acima ou rode o servidor a partir dela');
+      }
+    } else {
+      console.log('  → preencha OPENROUTER_API_KEY dentro de ' + ENV_FILE + ' e reinicie');
+    }
   }
   console.log('  veículos permitidos: definidos na própria página (Configurações)');
   console.log('');
