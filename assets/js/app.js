@@ -8,6 +8,7 @@
   var store = new NB.Store();
   var pipeline = new NB.Pipeline({ store: store });
   var speech = null;
+  var tabAudio = null;
   var demo = null;
   var triageChain = Promise.resolve();
   var healthChecked = false;
@@ -82,18 +83,24 @@
     el.micLevel.style.width = Math.round(Math.min(1, Math.max(0, v)) * 100) + '%';
   }
 
+  function levelNow() {
+    if (tabAudio && tabAudio.recording) return tabAudio.level();
+    return NB.Mic ? NB.Mic.level() : 0;
+  }
+
   function startMeter() {
-    if (meterTimer || !NB.Mic) return;
-    NB.Mic.open()
-      .then(function (info) {
-        NB.UI.transcriptMeta('microfone · ' + info.label);
-      })
-      .catch(function (err) {
-        NB.UI.log('warn', 'não foi possível medir o microfone: ' + (err.message || err));
-        return;
-      });
+    if (meterTimer) return;
+    if (!(tabAudio && tabAudio.recording) && NB.Mic) {
+      NB.Mic.open()
+        .then(function (info) {
+          NB.UI.transcriptMeta('microfone · ' + info.label);
+        })
+        .catch(function (err) {
+          NB.UI.log('warn', 'não foi possível medir o microfone: ' + (err.message || err));
+        });
+    }
     meterTimer = setInterval(function () {
-      paintLevel(NB.Mic.level());
+      paintLevel(levelNow());
     }, 100);
   }
 
@@ -101,7 +108,7 @@
     clearInterval(meterTimer);
     meterTimer = null;
     if (el.micMeter) el.micMeter.hidden = true;
-    if (NB.Mic) NB.Mic.close();
+    if (!(tabAudio && tabAudio.recording) && NB.Mic) NB.Mic.close();
   }
 
   var watchTimer = null;
@@ -232,6 +239,84 @@
     } finally {
       if (!speech || !speech.recording) stopMeter();
       if (el.btnMicTest) el.btnMicTest.disabled = false;
+    }
+  }
+
+  /* ---------------------------------------------------------- áudio da aba */
+
+  function ensureTabAudio() {
+    if (tabAudio) return tabAudio;
+    if (!NB.TabAudio) return null;
+    tabAudio = new NB.TabAudio({
+      cfg: function () {
+        return store.state;
+      },
+      chunkSeconds: store.state.audioChunkSeconds || 6
+    });
+
+    tabAudio.on('state', function (s) {
+      NB.UI.setMicStatus(!!s.recording, s.label);
+      if (s.recording) startMeter();
+      else stopMeter();
+    });
+
+    tabAudio.on('chunk', function (c) {
+      NB.UI.log('info', 'trecho de ' + c.seconds.toFixed(1) + ' s enviado à transcrição (' + Math.round(c.bytes / 1024) + ' KB)');
+    });
+
+    tabAudio.on('text', function (t) {
+      sawAnyText = true;
+      if (watchWarned) showMicHelp(false);
+      NB.UI.log('ok', 'transcrito · ' + t.text.length + ' caracteres em ' + t.seconds.toFixed(1) + ' s de áudio');
+      // Entra no mesmo segmentador da fala: daqui para frente o pipeline é o mesmo.
+      speech.feed(t.text);
+      var cost = (t.usage && typeof t.usage.cost === 'number') ? t.usage.cost : t.seconds * NB.config.sttPrice(store.state);
+      pipeline._trackUsage({ cost: cost, calls: 1 });
+    });
+
+    tabAudio.on('silence', function (s) {
+      if (tabAudio.skipped % 5 === 1) {
+        NB.UI.log('info', 'trecho de ' + s.seconds.toFixed(0) + ' s em silêncio descartado');
+      }
+    });
+
+    tabAudio.on('warn', function (w) {
+      NB.UI.log('warn', w.message);
+    });
+
+    tabAudio.on('error', function (e) {
+      NB.UI.log('error', e.message);
+      NB.UI.toast(e.message, 'err', 9000);
+    });
+
+    return tabAudio;
+  }
+
+  async function startTabListening() {
+    if (!NB.TabAudio || !NB.TabAudio.supported()) {
+      NB.UI.toast(
+        'Este navegador não captura o áudio da aba. Use Chrome ou Edge atualizados, com a página em http://localhost.',
+        'err',
+        8000
+      );
+      return;
+    }
+    var tab = ensureTabAudio();
+    tab.chunkSeconds = store.state.audioChunkSeconds || 6;
+    if (el.btnMicTest) el.btnMicTest.hidden = true;
+    try {
+      await tab.start();
+      requestWakeLock();
+      NB.UI.log('info', 'captura de aba ativa · trechos de ' + tab.chunkSeconds + ' s · ' + store.state.sttModel);
+      NB.UI.transcriptMeta('ouvindo o áudio da aba · trechos de ' + tab.chunkSeconds + ' s');
+      NB.UI.toast(
+        'Capturando o áudio da aba. Deixe o vídeo do debate tocando — de preferência nesta aba, com o som ligado.',
+        null,
+        8000
+      );
+    } catch (err) {
+      NB.UI.log('error', 'captura de aba recusada: ' + (err.message || err));
+      NB.UI.toast(err.message || String(err), 'err', 12000);
     }
   }
 
@@ -449,6 +534,7 @@
     setupPip();
     NB.UI.renderVideo(store.state);
     NB.UI.setMicStatus(false, 'microfone parado');
+    if (el.btnMicTest) el.btnMicTest.hidden = store.state.transcribeMode === 'tab';
   }
 
   /* ------------------------------------------------------------------ pip */
@@ -502,12 +588,22 @@
     }
   }
 
+  function isListening() {
+    return !!(speech.recording || (tabAudio && tabAudio.recording));
+  }
+
+  function stopListening() {
+    if (speech.recording) speech.stop();
+    if (tabAudio && tabAudio.recording) tabAudio.stop();
+    stopWatchdog();
+    releaseWakeLock();
+  }
+
   function toggleListening() {
     if (demo && demo.running) stopDemo();
 
-    if (speech.recording) {
-      speech.stop();
-      releaseWakeLock();
+    if (isListening()) {
+      stopListening();
       NB.UI.log('info', 'escuta parada');
       return;
     }
@@ -525,6 +621,12 @@
       NB.UI.openSettings();
       return;
     }
+    if (store.state.transcribeMode === 'tab') {
+      startTabListening();
+      return;
+    }
+
+    if (el.btnMicTest) el.btnMicTest.hidden = false;
     var ok = speech.start();
     if (ok) {
       requestWakeLock();
@@ -548,7 +650,7 @@
   }
 
   function startDemo() {
-    if (speech.recording) speech.stop();
+    if (isListening()) stopListening();
     if (!demo) {
       demo = new NB.demo.Demo({
         transcript: function (line) {
@@ -622,7 +724,15 @@
     speech.segmenter.chunkChars = s.chunkChars;
     speech.segmenter.chunkSeconds = s.chunkSeconds;
     speech.segmenter.contextSentences = s.contextSentences;
-    NB.UI.transcriptMeta('ouvindo · janelas de ' + s.chunkChars + ' caracteres');
+    if (tabAudio) tabAudio.chunkSeconds = s.audioChunkSeconds || 6;
+    if (el.btnMicTest) el.btnMicTest.hidden = s.transcribeMode === 'tab';
+    if (isListening()) {
+      NB.UI.transcriptMeta(
+        s.transcribeMode === 'tab'
+          ? 'ouvindo o áudio da aba · trechos de ' + (s.audioChunkSeconds || 6) + ' s'
+          : 'ouvindo · janelas de ' + s.chunkChars + ' caracteres'
+      );
+    }
   }
 
   function isConfigured() {
@@ -796,6 +906,10 @@
     speech: function () {
       return speech;
     },
+    tabAudio: function () {
+      return tabAudio;
+    },
+    stopListening: stopListening,
     checkHealth: checkHealth
   };
 })(window);

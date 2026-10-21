@@ -126,6 +126,8 @@ Em **Configurações**:
 3. confira o **modelo** — `anthropic/claude-opus-5.5` é o padrão e
    `anthropic/claude-haiku-5.5` faz a triagem. O botão **listar modelos** busca o catálogo do OpenRouter
    e preenche o campo com os preços;
+3b. escolha a **entrada de áudio**: *microfone* (Web Speech) ou *áudio da aba* (captura + Whisper), se o
+   microfone não ouve o debate;
 4. escolha a **engine de busca** (`automático` já usa a busca nativa do Claude) e quantos resultados
    por busca;
 5. **salvar**.
@@ -143,6 +145,8 @@ clique em **janela flutuante** e arraste a janelinha para cima do vídeo.
 | “proxy inacessível” na página | O terminal do `npm start` foi fechado — suba de novo. |
 | Microfone bloqueado | Permita no cadeado da barra de endereço. Se a página estiver dentro de um preview embutido, abra em aba própria. |
 | Nada é transcrito | Primeiro clique em **testar microfone** (ao lado de *checar janela*). Se o medidor não mexer, o áudio não está chegando no navegador — veja o item abaixo. Se mexer e mesmo assim não sair texto, o problema é o serviço de reconhecimento do Google: abra `google.com` nesta mesma aba; VPN, DNS que filtra `google.com` e extensões bloqueadoras são as causas comuns. Enquanto isso, use **entrada manual**. |
+| “a aba foi compartilhada sem áudio” | você escolheu a aba/janela sem marcar a caixa de áudio | repita o compartilhamento e marque **Compartilhar áudio da aba** |
+| Captura de aba em preto e sem som | conteúdo com DRM (Globo Play e alguns players) | use o YouTube, a janela flutuante ou o loopback por cabo virtual |
 | Microfone ouve a sala, não o vídeo | O reconhecimento escuta o **microfone padrão do sistema**, não a aba. Com alto-falante, o som do vídeo volta pelo ar e o cancelamento de eco do Chrome apaga justamente ele. O caminho confiável é o **loopback por software**: instale o [VB-Audio Virtual Cable](https://vb-audio.com/Cable/), ponha `CABLE Input` como *saída* padrão do Windows e `CABLE Output` como *entrada* padrão. O áudio do debate vai direto para o Chrome, sem eco e sem ruído de sala. A **Mixagem estéreo** do Windows resolve quando existe (Painel de Controle → Som → Gravação → clique direito no vazio → *Mostrar dispositivos desativados*); notebooks com *Intel Smart Sound* normalmente não têm. O botão **testar microfone** abre essas opções sozinho quando não capta som. |
 | Transcrição atrasada ou picada | A janela fecha em 260 caracteres ou 30 s. Diminua `chunkChars` nas configurações para 140 se o debate for rápido; o custo é mais chamadas. |
 | 401 na checagem | Chave inválida ou revogada: gere outra em [openrouter.ai/workspaces/default/keys](https://openrouter.ai/workspaces/default/keys) e atualize o `.env`. |
@@ -263,6 +267,58 @@ Quando o endpoint escolhido não filtra (caso típico: Claude roteado para o Goo
 o app repete a busca sem `engine`, no automático, que passa a usar a Exa porque há lista de domínios.
 
 ---
+
+## Ouvir o áudio da aba (sem microfone)
+
+A Web Speech API **só aceita microfone** — não existe como entregar a ela o som de uma aba. Quando o
+microfone não ouve o debate (fone de ouvido, cancelamento de eco, placa sem loopback), a alternativa é a
+própria página capturar o áudio:
+
+```
+getDisplayMedia({audio}) ──► AudioContext ──► MediaRecorder (webm/opus)
+        │                                            │
+        │                              trechos de 3–15 s (padrão 6 s)
+        │                                            ▼
+        │                       POST /api/v1/audio/transcriptions (Whisper)
+        ▼                                            │
+   medidor de nível                                  ▼
+                                        texto → mesmo segmentador → mesma checagem
+```
+
+Como usar:
+
+1. **Configurações → Entrada de áudio** → *áudio da aba · captura + Whisper* → **salvar**;
+2. clique em **Iniciar escuta** — o Chrome abre o seletor de compartilhamento;
+3. escolha a **aba do debate** e marque **“Compartilhar áudio da aba”** (a caixa aparece embaixo do
+   botão *Compartilhar*; sem ela a página avisa que veio sem áudio);
+4. deixe o vídeo tocando. O indicador do topo mostra `ouvindo a aba` e o medidor reage ao som.
+
+O trecho é enviado em base64 para o proxy local, que repassa ao endpoint de transcrição do OpenRouter com
+a **mesma chave**. Escolha o modelo em **Modelo de transcrição**:
+
+| Modelo | US$ por segundo | Quando usar |
+|---|---|---|
+| `openai/whisper-1` | 0,0001 | padrão; 6 s ≈ US$ 0,0006 |
+| `openai/whisper-large-v3-turbo` | ~0,00004 | mais rápido e barato |
+| `openai/gpt-4o-transcribe` | 0,0001 | melhor em nomes próprios e números |
+| `google/chirp-3` | 0,0001 | áudio de transmissão |
+
+Um debate de duas horas custa entre **US$ 0,30 e US$ 0,70** só de transcrição. O contador da tela soma
+isso ao custo das checagens.
+
+**Atraso:** trecho de 6 s + envio + transcrição ≈ 7–10 s até o texto aparecer; a checagem soma mais
+alguns segundos. É mais lento que a Web Speech, mas ouve o vídeo — que é o que importa quando o microfone
+não coopera.
+
+**Limites honestos:**
+
+- o áudio é enviado ao OpenRouter e transcrito lá (o mesmo destino das chamadas de checagem) — não
+  fique nesse modo se o áudio for confidencial;
+- **abas com DRM** (Globo Play, alguns players) podem ir em preto/mudo para a captura; com YouTube
+  funciona;
+- capture **somente a aba do debate**: se você compartilhar a aba inteira com notificações, elas entram
+  na transcrição;
+- fechar o banner “esta aba está sendo compartilhada” encerra a captura — o app avisa.
 
 ## Por que não é instantâneo
 
@@ -445,7 +501,8 @@ assets/js/client.js        transporte das duas APIs (proxy ou direto)
 assets/js/providers.js     adaptadores: triagem, busca e julgamento de cada provedor
 assets/js/audit.js         auditoria de fontes (o núcleo anti-invenção)
 assets/js/pipeline.js      fila, dedupe, concorrência, custo
-assets/js/speech.js        Web Speech API + segmentador de janelas
+assets/js/speech.js        Web Speech API, medidor de microfone + segmentador de janelas
+assets/js/audio.js         captura do áudio da aba + transcrição (Whisper do OpenRouter)
 assets/js/pip.js           janela flutuante (Document Picture-in-Picture)
 assets/js/demo.js          simulação sem API
 assets/js/ui.js            cartões, flash, duotone, ajustes, exportação

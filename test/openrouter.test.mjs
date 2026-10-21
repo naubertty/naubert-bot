@@ -16,7 +16,7 @@ function loadNB() {
   };
   sandbox.window = sandbox;
   vm.createContext(sandbox);
-  for (const file of ['config.js', 'outlets.js', 'store.js', 'audit.js', 'pipeline.js', 'providers.js']) {
+  for (const file of ['config.js', 'outlets.js', 'store.js', 'audit.js', 'pipeline.js', 'providers.js', 'audio.js']) {
     vm.runInContext(fs.readFileSync(path.join(root, 'assets', 'js', file), 'utf8'), sandbox, { filename: file });
   }
   return sandbox.NB;
@@ -422,4 +422,32 @@ test('isDomainRejection distingue filtro de domínio de ferramenta ausente', () 
   tool.status = 400;
   assert.equal(NB.providers.isDomainRejection(domains), true);
   assert.equal(NB.providers.isDomainRejection(tool), false);
+});
+
+/* ------------------------------------------------------- transcrição (STT) */
+
+test('transcriptText lê o texto em qualquer formato aceito pela API', () => {
+  const T = NB.TabAudio.transcriptText;
+  assert.equal(T({ text: '  olá  ' }), 'olá');
+  assert.equal(T({ transcript: 'transcrito' }), 'transcrito');
+  assert.equal(T({ output_text: 'saída' }), 'saída');
+  assert.equal(T({ choices: [{ message: { content: 'chat' } }] }), 'chat');
+  assert.equal(T({ choices: [{ message: { content: [{ text: 'par' }, { text: 'tes' }] } }] }), 'par tes');
+  assert.equal(T({}), '');
+  assert.equal(T(null), '');
+});
+
+test('sttPrice devolve o preço por segundo do modelo configurado', () => {
+  assert.equal(NB.config.sttPrice({ sttModel: 'openai/whisper-1' }), 0.0001);
+  assert.equal(NB.config.sttPrice({ sttModel: 'openai/whisper-large-v3-turbo' }), 0.00004);
+  assert.equal(NB.config.sttPrice({ sttModel: 'modelo-desconhecido' }), 0.0001);
+  assert.equal(NB.config.sttPrice({}), 0.0001);
+});
+
+test('o modelo padrão de transcrição está na lista de preços', () => {
+  const defaults = NB.config.defaults();
+  assert.ok(defaults.sttModel);
+  assert.ok(NB.config.STT_MODELS.some((m) => m.id === defaults.sttModel));
+  assert.equal(defaults.transcribeMode, 'mic');
+  assert.ok(defaults.audioChunkSeconds >= 3);
 });

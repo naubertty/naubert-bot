@@ -29,6 +29,30 @@
     { id: 'openai/gpt-5.2', label: 'GPT-5.2', note: 'alternativa' }
   ];
 
+  var STT_MODELS = [
+    { id: 'openai/whisper-1', label: 'Whisper 1 · US$ 0,0001/s', note: 'barato e estável; bom em português' },
+    { id: 'openai/whisper-large-v3', label: 'Whisper Large v3', note: 'mais preciso, mais lento' },
+    { id: 'openai/whisper-large-v3-turbo', label: 'Whisper Large v3 Turbo', note: 'rápido, precisão próxima do large' },
+    { id: 'openai/gpt-4o-transcribe', label: 'GPT-4o Transcribe', note: 'melhor em nomes próprios e números' },
+    { id: 'openai/gpt-4o-mini-transcribe', label: 'GPT-4o Mini Transcribe', note: 'barato com boa qualidade' },
+    { id: 'google/chirp-3', label: 'Google Chirp 3', note: 'forte em áudio de transmissão' }
+  ];
+
+  // US$ por segundo de áudio enviado (referência de outubro de 2026).
+  var STT_PRICES = {
+    'openai/whisper-1': 0.0001,
+    'openai/whisper-large-v3': 0.0001,
+    'openai/whisper-large-v3-turbo': 0.00004,
+    'openai/gpt-4o-transcribe': 0.0001,
+    'openai/gpt-4o-mini-transcribe': 0.00005,
+    'google/chirp-3': 0.0001
+  };
+
+  function sttPrice(cfg) {
+    var model = (cfg && cfg.sttModel) || 'openai/whisper-1';
+    return STT_PRICES[model] != null ? STT_PRICES[model] : 0.0001;
+  }
+
   var SEARCH_ENGINES = [
     { id: 'auto', label: 'Automático (padrão)', note: 'busca nativa quando existe; com lista de domínios cai para Exa se o provedor não filtrar' },
     { id: 'native', label: 'Nativa do provedor', note: 'melhor com Claude/GPT/Grok; Gemini não aceita filtro de domínios (o app repete no automático)' },
@@ -168,6 +192,9 @@
     maxTokensVerify: 8000,
 
     // Transcrição
+    transcribeMode: 'mic',            // 'mic' (Web Speech) | 'tab' (captura da aba + Whisper)
+    sttModel: 'openai/whisper-1',     // modelo do endpoint /audio/transcriptions
+    audioChunkSeconds: 6,             // tamanho do trecho enviado quando é captura de aba
     lang: 'pt-BR',
     chunkChars: 260,
     chunkSeconds: 30,
@@ -238,6 +265,8 @@
     OPENROUTER_MODELS: OPENROUTER_MODELS,
     MODELS: ANTHROPIC_MODELS, // compatibilidade
     SEARCH_ENGINES: SEARCH_ENGINES,
+    STT_MODELS: STT_MODELS,
+    sttPrice: sttPrice,
     SEARCH_TOOLS: SEARCH_TOOLS,
     PRICES: PRICES,
     priceFor: priceFor,

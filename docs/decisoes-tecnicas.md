@@ -241,3 +241,43 @@ busca, US$ 0,007 na Exa) serve para quando o campo não vem.
 **Listagem de modelos:** o catálogo do OpenRouter tem dezenas de milhares de linhas, então não vai inteiro
 para o navegador. O proxy `/api/openrouter/models` filtra por `q`, ordena por `created`, corta em 100 e
 devolve só `id`, `name`, `context_length` e preço. O resultado é cacheado por 10 minutos no servidor.
+
+## 14. Captura da aba em vez de microfone
+
+O pedido chegou assim: "não está transcrevendo com precisão; tem como ouvir direto da página, sem ser
+pelo microfone?". A resposta honesta é que **a Web Speech API não aceita um `MediaStream`**: ela sempre
+lê o dispositivo de entrada padrão do sistema. Não existe truque de JavaScript que aponte o
+`SpeechRecognition` para o som de uma aba.
+
+Restavam três caminhos:
+
+1. **loopback no sistema operacional** (VB-Cable, Mixagem estéreo) — a aba passa a ser a "entrada";
+2. **capturar a aba com `getDisplayMedia` e transcrever fora do navegador**;
+3. baixar um Whisper em WASM (~80–250 MB de modelo, mais lento que tempo real em CPU).
+
+Escolhemos o 2, com o Whisper do OpenRouter, porque a chave já estava configurada e não há dependência
+nova. O caminho 1 continua documentado como alternativa de melhor qualidade (a Web Speech é instantânea
+e gratuita).
+
+**Desenho da captura.** `getDisplayMedia` exige vídeo para abrir o seletor; o vídeo é descartado no
+primeiro instante e só a faixa de áudio permanece. O áudio passa por um `AudioContext`, com uma cópia
+para o `AnalyserNode` (medidor e detecção de silêncio) e outra para um `MediaStreamAudioDestinationNode`,
+que é o que o `MediaRecorder` grava.
+
+**Um recorder por trecho.** `MediaRecorder.start(timeslice)` produz fragmentos WebM que não são arquivos
+válidos sozinhos — o header aparece só no primeiro. Por isso cada trecho de N segundos tem seu próprio
+`MediaRecorder`: `start()`, espera N segundos, `stop()`, e o `Blob` resultante é um WebM completo e
+decodificável. É mais caro em alocação e irrelevante em escala de 6 s.
+
+**Silêncio não é enviado.** Um `setInterval` amostra o RMS a cada 100 ms; se o pico do trecho não passa
+do limiar, ele é descartado antes de virar chamada de API. Em um debate com pausas isso corta uma parte
+real do custo.
+
+**O texto volta para o mesmo lugar.** `speech.feed(texto)` empurra a transcrição para o segmentador que
+já existia — janelas de 260 caracteres/30 s, contexto das últimas frases, dedupe, fila. Nada do pipeline
+mudou: a única diferença é que o texto entrou pelo Whisper e não pela Web Speech.
+
+**Custo e privacidade.** O áudio vai para o OpenRouter (o mesmo destino das checagens) e não é gravado em
+disco em nenhum momento: o `Blob` morre depois do envio. O modelo padrão é o Whisper 1, a US$ 0,0001 por
+segundo — US$ 0,0006 por trecho de 6 s. O `usage.cost` da resposta, quando vem, tem prioridade sobre a
+estimativa da tabela.

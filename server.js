@@ -289,7 +289,8 @@ function openRouterHeaders(origin) {
   return headers;
 }
 
-async function forwardToOpenRouter(req, res) {
+async function forwardToOpenRouter(req, res, upstreamPath) {
+  const target = upstreamPath || '/chat/completions';
   if (!OPENROUTER_API_KEY) {
     apiError(
       res,
@@ -317,7 +318,7 @@ async function forwardToOpenRouter(req, res) {
   const origin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : '');
 
   try {
-    const upstream = await fetch(OPENROUTER_BASE + '/chat/completions', {
+    const upstream = await fetch(OPENROUTER_BASE + target, {
       method: 'POST',
       headers: openRouterHeaders(origin),
       body: body,
@@ -434,6 +435,20 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Transcrição (STT): captura de aba, áudio enviado em base64.
+    if (pathname === '/api/openrouter/transcribe') {
+      if (req.method !== 'POST') {
+        apiError(res, 405, 'invalid_request_error', 'Use POST.');
+        return;
+      }
+      if (!checkToken(req)) {
+        apiError(res, 401, 'authentication_error', 'Token do proxy inválido.');
+        return;
+      }
+      await forwardToOpenRouter(req, res, '/audio/transcriptions');
+      return;
+    }
+
     if (pathname === '/api/openrouter/models') {
       if (!checkToken(req)) {
         apiError(res, 401, 'authentication_error', 'Token do proxy inválido.');
@@ -520,6 +535,7 @@ server.listen(PORT, HOST, () => {
       console.log('  → preencha OPENROUTER_API_KEY dentro de ' + ENV_FILE + ' e reinicie');
     }
   }
+  console.log('  transcrição: Web Speech (microfone) ou captura de aba + Whisper do OpenRouter');
   console.log('  veículos permitidos: definidos na própria página (Configurações)');
   console.log('');
 });

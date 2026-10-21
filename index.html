@@ -330,6 +330,38 @@
       </section>
 
       <section class="fieldset">
+        <h3>Entrada de áudio</h3>
+        <p class="help">
+          O microfone usa a Web Speech API do Chrome: instantâneo e gratuito, mas depende do serviço do
+          Google e só escuta o dispositivo de entrada. O <b>áudio da aba</b> captura o som do próprio
+          vídeo (YouTube embutido ou qualquer aba) e transcreve com o Whisper do OpenRouter — é a opção
+          quando o microfone não ouve o debate.
+        </p>
+        <div class="row">
+          <label class="field">
+            <span>De onde vem o som</span>
+            <select id="f-transcribeMode">
+              <option value="mic">microfone · Web Speech API</option>
+              <option value="tab">áudio da aba · captura + Whisper</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Modelo de transcrição (áudio da aba)</span>
+            <select id="f-sttModel"></select>
+          </label>
+          <label class="field">
+            <span>Trechos de <b id="audioChunkVal" class="mono">6</b> s</span>
+            <input id="f-audioChunkSeconds" type="range" min="3" max="15" step="1">
+          </label>
+        </div>
+        <p class="help" id="tabAudioHelp">
+          Na captura de aba, o Chrome pede para escolher a aba: selecione a do debate e marque
+          <b>“Compartilhar áudio da aba”</b>. O vídeo pode ficar em outra janela — o som é o que importa.
+          Cada trecho custa cerca de US$ 0,0006 no Whisper 1 (6 s a US$ 0,0001/s).
+        </p>
+      </section>
+
+      <section class="fieldset">
         <h3>Ritmo da checagem</h3>
         <p class="help">Janelas menores chegam mais rápido, mas gastam mais chamadas e perdem contexto.</p>
         <div class="row">
@@ -444,6 +476,7 @@
 <script src="assets/js/pipeline.js"></script>
 <script src="assets/js/providers.js"></script>
 <script src="assets/js/speech.js"></script>
+<script src="assets/js/audio.js"></script>
 <script src="assets/js/pip.js"></script>
 <script src="assets/js/demo.js"></script>
 <script src="assets/js/ui.js"></script>

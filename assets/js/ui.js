@@ -47,7 +47,11 @@
   }
 
   function brl(n) {
-    return 'US$ ' + Number(n || 0).toFixed(2).replace('.', ',');
+    var v = Number(n || 0);
+    // Centavos somem em checagens individuais; abaixo de US$ 1 mostramos 4 casas
+    // para o contador reagir a cada busca e a cada trecho transcrito.
+    var digits = v > 0 && v < 1 ? 4 : 2;
+    return 'US$ ' + v.toFixed(digits).replace('.', ',');
   }
 
   function secs(ms) {
@@ -172,6 +176,12 @@
     if (tool) {
       tool.innerHTML = NB.config.SEARCH_TOOLS.map(function (t) {
         return '<option value="' + esc(t.id) + '">' + esc(t.label) + '</option>';
+      }).join('');
+    }
+    var stt = $('f-sttModel');
+    if (stt) {
+      stt.innerHTML = NB.config.STT_MODELS.map(function (t) {
+        return '<option value="' + esc(t.id) + '" title="' + esc(t.note) + '">' + esc(t.label) + '</option>';
       }).join('');
     }
   }
@@ -705,6 +715,9 @@
     $('f-locRegion').value = s.userLocation.region || '';
     $('f-locCountry').value = s.userLocation.country || '';
     $('f-locTz').value = s.userLocation.timezone || '';
+    $('f-transcribeMode').value = s.transcribeMode || 'mic';
+    $('f-sttModel').value = s.sttModel || 'openai/whisper-1';
+    $('f-audioChunkSeconds').value = s.audioChunkSeconds || 6;
     $('f-chunkChars').value = s.chunkChars;
     $('f-chunkSeconds').value = s.chunkSeconds;
     $('f-concurrency').value = String(s.concurrency);
@@ -741,6 +754,7 @@
       : 'Na Anthropic a lista vira <code>allowed_domains</code> da web_search. Domínio puro, sem ' +
         '<code>https://</code>; subdomínios entram automaticamente.';
 
+    $('audioChunkVal').textContent = $('f-audioChunkSeconds').value;
     $('chunkCharsVal').textContent = $('f-chunkChars').value;
     $('chunkSecondsVal').textContent = $('f-chunkSeconds').value;
     $('duotoneVal').textContent = $('f-duotoneStrength').value + '%';
@@ -748,7 +762,7 @@
   }
 
   function bindSettingsChrome() {
-    ['f-chunkChars', 'f-chunkSeconds', 'f-duotoneStrength', 'f-duotoneHold'].forEach(function (id) {
+    ['f-chunkChars', 'f-chunkSeconds', 'f-audioChunkSeconds', 'f-duotoneStrength', 'f-duotoneHold'].forEach(function (id) {
       $(id).addEventListener('input', syncSettingsChrome);
     });
     $('f-apiMode').addEventListener('change', syncSettingsChrome);
@@ -809,6 +823,9 @@
       searchTool: $('f-searchTool').value,
       maxResults: Number($('f-maxResults').value) || 5,
       maxUses: Number($('f-maxUses').value) || 4,
+      transcribeMode: $('f-transcribeMode').value,
+      sttModel: $('f-sttModel').value,
+      audioChunkSeconds: Number($('f-audioChunkSeconds').value),
       chunkChars: Number($('f-chunkChars').value),
       chunkSeconds: Number($('f-chunkSeconds').value),
       concurrency: Number($('f-concurrency').value),

@@ -19,6 +19,10 @@
     return (cfg.proxyBase || '').replace(/\/+$/, '');
   }
 
+  function transcribeUrl(cfg) {
+    return cfg.apiMode === 'proxy' ? base(cfg) + '/api/openrouter/transcribe' : OR_BASE + '/audio/transcriptions';
+  }
+
   function urlFor(cfg, provider) {
     if (cfg.apiMode === 'proxy') {
       return base(cfg) + (provider === 'openrouter' ? '/api/openrouter/chat' : '/api/messages');
@@ -164,6 +168,15 @@
     chat: chat,
     health: health,
     models: models,
+
+    /**
+     * Transcrição de um trecho de áudio (captura de aba).
+     * Sempre OpenRouter: é o único provedor configurado com /audio/transcriptions.
+     */
+    transcribe: async function (cfg, body, signal) {
+      return send(transcribeUrl(cfg), cfg, 'openrouter', body, signal);
+    },
+
     friendlyError: friendlyError,
     // compatibilidade com o nome anterior
     create: messages
