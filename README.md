@@ -143,7 +143,7 @@ clique em **janela flutuante** e arraste a janelinha para cima do vídeo.
 | “proxy inacessível” na página | O terminal do `npm start` foi fechado — suba de novo. |
 | Microfone bloqueado | Permita no cadeado da barra de endereço. Se a página estiver dentro de um preview embutido, abra em aba própria. |
 | Nada é transcrito | Primeiro clique em **testar microfone** (ao lado de *checar janela*). Se o medidor não mexer, o áudio não está chegando no navegador — veja o item abaixo. Se mexer e mesmo assim não sair texto, o problema é o serviço de reconhecimento do Google: abra `google.com` nesta mesma aba; VPN, DNS que filtra `google.com` e extensões bloqueadoras são as causas comuns. Enquanto isso, use **entrada manual**. |
-| Microfone ouve a sala, não o vídeo | O reconhecimento escuta o microfone, não a aba. Com fone de ouvido não há o que transcrever. No Windows, habilite **Mixagem estéreo** (Painel de Controle → Som → Gravação → clique direito no espaço vazio → *Mostrar dispositivos desativados* → ative) e escolha esse dispositivo como entrada: o áudio do vídeo vai direto para o Chrome, sem ruído da sala e sem cancelamento de eco. |
+| Microfone ouve a sala, não o vídeo | O reconhecimento escuta o **microfone padrão do sistema**, não a aba. Com alto-falante, o som do vídeo volta pelo ar e o cancelamento de eco do Chrome apaga justamente ele. O caminho confiável é o **loopback por software**: instale o [VB-Audio Virtual Cable](https://vb-audio.com/Cable/), ponha `CABLE Input` como *saída* padrão do Windows e `CABLE Output` como *entrada* padrão. O áudio do debate vai direto para o Chrome, sem eco e sem ruído de sala. A **Mixagem estéreo** do Windows resolve quando existe (Painel de Controle → Som → Gravação → clique direito no vazio → *Mostrar dispositivos desativados*); notebooks com *Intel Smart Sound* normalmente não têm. O botão **testar microfone** abre essas opções sozinho quando não capta som. |
 | Transcrição atrasada ou picada | A janela fecha em 260 caracteres ou 30 s. Diminua `chunkChars` nas configurações para 140 se o debate for rápido; o custo é mais chamadas. |
 | 401 na checagem | Chave inválida ou revogada: gere outra em [openrouter.ai/workspaces/default/keys](https://openrouter.ai/workspaces/default/keys) e atualize o `.env`. |
 | 402 na checagem | Sem créditos no OpenRouter. Recarregue em [openrouter.ai/credits](https://openrouter.ai/credits) ou troque para um modelo mais barato na triagem. |
@@ -155,9 +155,18 @@ Para testar com o microfone conhecido:
 1. **Testar microfone** mede 10 s e mostra no aviso o pico e o nome do dispositivo;
 2. **Iniciar escuta** liga o mesmo medidor ao lado dos botões da transcrição, em tempo real.
 
-Se o medidor fica no zero e o vídeo está tocando, o problema é de captura (dispositivo errado, mudo, ou
-fone de ouvido). Se o medidor mexe e nada aparece escrito, o problema é a conversa do Chrome com os
-servidores de reconhecimento do Google — o app tenta de novo até 5 vezes antes de avisar.
+O medidor é medido **sem** cancelamento de eco, supressão de ruído e ganho automático — é o sinal cru do
+dispositivo. Isso separa as duas falhas:
+
+- **medidor no zero com o vídeo tocando** → o áudio não está chegando. O reconhecimento usa o microfone
+  padrão do sistema, então o caminho é trocar o dispositivo de entrada (VB-Cable ou Mixagem estéreo). O
+  teste abre um painel com os três caminhos possíveis;
+- **medidor mexe e nada aparece escrito** → o áudio chega e o problema é a conversa do Chrome com os
+  servidores de reconhecimento do Google (VPN, DNS filtrando `google.com`, extensão bloqueando). O app
+  tenta de novo até 5 vezes antes de avisar.
+
+O nome da entrada em uso aparece na linha da transcrição e a lista completa de entradas fica no console
+do app — serve para conferir se o `CABLE Output` realmente apareceu.
 
 ### Onde ficam as configurações
 

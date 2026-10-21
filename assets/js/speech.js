@@ -294,7 +294,18 @@
       if (!global.navigator || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('Este navegador não expõe o microfone. Use http://localhost ou https (não abra o arquivo direto).');
       }
-      var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Sem cancelamento de eco, supressão de ruído e ganho automático: aqui o
+      // objetivo é MEDIR o que chega. Com o processamento ligado, o Chrome
+      // cancela justamente o áudio do vídeo que sai pelo alto-falante — e o
+      // medidor marcaria zero com o debate tocando.
+      var stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          channelCount: 1
+        }
+      });
       var Ctx = global.AudioContext || global.webkitAudioContext;
       if (!Ctx) throw new Error('Este navegador não expõe o AudioContext.');
       var ctx = new Ctx();
@@ -310,6 +321,23 @@
       var track = stream.getAudioTracks()[0];
       this.label = (track && track.label) || 'microfone';
       return { label: this.label, open: true };
+    },
+
+    /** Lista os microfones disponíveis, para diagnosticar a escolha do sistema. */
+    devices: async function () {
+      if (!global.navigator || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return [];
+      try {
+        var list = await navigator.mediaDevices.enumerateDevices();
+        return list
+          .filter(function (d) {
+            return d.kind === 'audioinput';
+          })
+          .map(function (d) {
+            return { id: d.deviceId, label: d.label || '(sem nome — abra o microfone para liberar)' };
+          });
+      } catch (e) {
+        return [];
+      }
     },
 
     /** Nível de entrada de 0 a 1, já com curva perceptual. */

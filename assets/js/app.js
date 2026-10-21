@@ -104,6 +104,13 @@
     if (NB.Mic) NB.Mic.close();
   }
 
+  function showMicHelp(show) {
+    var panel = $('micHelp');
+    if (!panel) return;
+    panel.hidden = !show;
+    if (show) panel.open = true;
+  }
+
   /**
    * Mede o microfone por 10 s e diz se ele ouviu algo. É o teste que separa
    * "o microfone não está ouvindo o vídeo" de "o serviço do Google não respondeu".
@@ -131,16 +138,32 @@
         }, 100);
       });
 
+      var devices = await NB.Mic.devices();
+      if (devices.length) {
+        NB.UI.log(
+          'info',
+          'entradas de áudio do sistema: ' +
+            devices
+              .map(function (d) {
+                return d.label;
+              })
+              .join(' · ')
+        );
+      }
+
       if (peak < 0.06) {
+        showMicHelp(true);
         NB.UI.toast(
-          'O microfone não captou som em 10 s. Se o debate está tocando, o áudio não está chegando: ' +
-            'confira o dispositivo de entrada no Windows (ícone de som na barra) e se o vídeo está no volume. ' +
-            'Com fone de ouvido, o microfone não ouve o vídeo — veja "Mixagem estéreo" no README.',
+          'Nenhum som chegou em ' + info.label + ' durante 10 s. O Chrome transcreve o microfone ' +
+            'padrão do sistema — não o áudio da aba. Abri as opções abaixo da transcrição: o caminho ' +
+            'confiável é o VB-Cable (loopback), porque alto-falante + cancelamento de eco do Chrome ' +
+            'apaga justamente o som do vídeo.',
           'err',
-          14000
+          16000
         );
         NB.UI.log('warn', 'teste de microfone: silêncio (pico ' + Math.round(peak * 100) + '%)');
       } else {
+        showMicHelp(false);
         NB.UI.toast(
           'Microfone ouvindo (pico ' + Math.round(peak * 100) + '% em ' + info.label + '). ' +
             'Se a transcrição continuar vazia com este nível, o problema é o serviço de reconhecimento do Chrome.',

@@ -537,6 +537,32 @@ a { color: inherit; }
 }
 .manual input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(127,231,196,.1); }
 
+/* Ajuda de microfone: aparece quando o teste não capta som */
+.mic-help {
+  margin-top: 10px; border: 1px solid rgba(255, 196, 92, .35);
+  border-radius: var(--r-sm); background: rgba(255, 196, 92, .06);
+  font-size: 12px; color: var(--text);
+}
+.mic-help summary {
+  cursor: pointer; padding: 8px 11px; font-family: var(--mono);
+  font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase;
+  color: #ffc45c; list-style: none;
+}
+.mic-help summary::-webkit-details-marker { display: none; }
+.mic-help summary::before { content: "▸ "; }
+.mic-help[open] summary::before { content: "▾ "; }
+.mic-help-body { padding: 0 12px 10px; line-height: 1.55; color: var(--text-dim); }
+.mic-help-body p { margin: 0 0 8px; }
+.mic-help-body ol { margin: 0 0 8px; padding-left: 18px; }
+.mic-help-body li { margin-bottom: 7px; }
+.mic-help-body b { color: var(--text); }
+.mic-help-body code {
+  font-family: var(--mono); font-size: 11px;
+  background: rgba(255, 255, 255, .06); padding: 1px 5px; border-radius: 4px;
+}
+.mic-help-body a { color: var(--accent); }
+.mic-help-foot { font-size: 11px; color: var(--text-mute); margin: 0; }
+
 /* ================================================================== rail = */
 
 .rail {

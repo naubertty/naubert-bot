@@ -98,6 +98,41 @@
           <input id="manualInput" type="text" placeholder="Cole aqui o que acabou de ser dito e pressione Enter" autocomplete="off" spellcheck="false">
           <button class="btn btn-tiny" type="submit">enviar</button>
         </form>
+
+        <details class="mic-help" id="micHelp" hidden>
+          <summary>o microfone não está ouvindo o vídeo — abrir as opções</summary>
+          <div class="mic-help-body">
+            <p>
+              O Chrome transcreve o que chega no <b>microfone padrão do sistema</b>, não o áudio da aba.
+              Com alto-falante, o som do vídeo volta pelo ar — e o cancelamento de eco do Chrome costuma
+              apagar justamente ele. Os caminhos, do mais confiável para o mais frágil:
+            </p>
+            <ol>
+              <li>
+                <b>Loopback por software.</b> Instale o
+                <a href="https://vb-audio.com/Cable/" target="_blank" rel="noreferrer">VB-Audio Virtual Cable</a>,
+                ponha <code>CABLE Input</code> como <i>saída</i> padrão do Windows e <code>CABLE Output</code>
+                como <i>entrada</i> padrão de gravação. O áudio do debate vai direto para o Chrome, sem eco
+                e sem ruído de sala. Notebooks com <i>Intel Smart Sound</i> raramente têm a opção abaixo.
+              </li>
+              <li>
+                <b>Mixagem estéreo</b> (só em algumas placas). Painel de Controle → Som → aba
+                <b>Gravação</b> → clique direito no espaço vazio → <i>Mostrar dispositivos desativados</i>.
+                Se aparecer <i>Mixagem estéreo</i>, ative e defina como padrão.
+              </li>
+              <li>
+                <b>Alto-falante no ar, sem fone.</b> Aumente o volume, aproxime do aparelho e, se ainda
+                falhar, desligue o processamento de áudio do Chrome em
+                <code>chrome://settings/content/microphone</code>. É o caminho mais sujeito a falha.
+              </li>
+            </ol>
+            <p class="mic-help-foot">
+              Depois de trocar o dispositivo, feche e reabra o Chrome e clique em
+              <b>testar microfone</b> de novo. O nome do dispositivo em uso aparece na linha da transcrição —
+              e a lista completa fica no console do app.
+            </p>
+          </div>
+        </details>
       </div>
     </section>
 
