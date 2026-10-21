@@ -168,13 +168,15 @@ chamadas) e manter Opus na verificação. A segunda é reduzir `maxUses`.
 
 ## 11. O que foi validado
 
-- **22 testes de unidade** (`npm test`) sobre normalização de domínio, regra de subdomínio, extração de
-  evidências (incluindo blocos aninhados da filtragem dinâmica), detecção de fonte inventada, comparação
-  com `www`/barra/UTM, rebaixamento de veredito e normalização de strings de veredito.
-- **Teste de integração em DOM real (jsdom)** com respostas gravadas da API: boot, health check, entrada
-  manual, janela, triagem, verificação, auditoria, cartão, flash, duotone, timeline, custo e simulação —
-  31 verificações, zero erro de console. O script desse teste não é versionado porque depende de jsdom
-  instalado à parte; o roteiro está descrito aqui e pode ser recriado.
+- **36 testes de unidade** (`npm test`) sobre normalização de domínio, regra de subdomínio, extração de
+  evidências (incluindo blocos aninhados da filtragem dinâmica e `url_citation` do OpenRouter), detecção de
+  fonte inventada, comparação com `www`/barra/UTM, rebaixamento de veredito, normalização de strings de
+  veredito e os fallbacks do OpenRouter (sem server tool, sem structured outputs, engine sem filtro).
+- **Teste de integração em DOM real (jsdom)** com respostas gravadas da API: boot, health check, catálogo
+  de modelos, troca de provedor, entrada manual, triagem, busca, julgamento, auditoria, cartão, flash,
+  duotone e custo — 25 verificações no roteiro do OpenRouter (31 no roteiro da Anthropic), zero erro de
+  console. O script desse teste não é versionado porque depende de jsdom instalado à parte; o roteiro está
+  descrito aqui e pode ser recriado.
 - **Smoke test do servidor**: health, estáticos, MIME, bloqueio de `.env`, traversal, erro de configuração
   sem chave e 404 de rota de API.
 
@@ -193,3 +195,49 @@ para conferir a auditoria no log antes de rodar ao vivo.
 5. **Teste com legendas oficiais** em vez de microfone, o que elimina a maior fonte de erro.
 6. **Múltiplas listas de veículos por programa**, com a lista exibida no ar junto do veredito.
 7. **Cache de verificação** por hash da afirmação normalizada + lista de domínios, para reprises.
+
+## 13. OpenRouter como provedor padrão
+
+O pedido mudou no meio do caminho: a chave disponível é do OpenRouter, não da Anthropic. Em vez de jogar
+fora o caminho Anthropic (que é o mais simples e continua útil), o transporte foi separado do raciocínio:
+
+```
+client.js      -> só HTTP (endpoint, headers, erro traduzido)
+providers.js   -> o que cada API precisa: payload, formato de evidência, extração do texto
+pipeline.js    -> fila, dedupe, concorrência, custo, auditoria
+```
+
+Cada provedor implementa `triage(ctx)`, `verify(ctx)` e `usageOf(res)`. O pipeline não sabe qual está em
+uso — só chama `NB.providers.get(cfg)`.
+
+**A verificação no OpenRouter tem duas chamadas, não uma.** A documentação de structured outputs e a de
+server tools não se combinam: quando o `response_format` com `json_schema` entra na mesma requisição da
+busca, o provedor deixa de devolver as anotações `url_citation` — e sem anotação não existe auditoria,
+porque não existe a lista de URLs que voltaram da busca. A saída foi separar:
+
+1. **busca** — texto livre + `tools: [{type: 'openrouter:web_search', parameters: {allowed_domains, …}}]`
+   + `max_tool_calls: 4`. A resposta traz `message.annotations[]`.
+2. **julgamento** — texto + a lista **fechada** de URLs encontradas + `response_format` com schema estrito.
+   Sem `tools`, para não haver busca nova.
+
+Isso custa uma chamada a mais por afirmação (mais ou menos 1–2 s e uns centavos), mas é o que mantém a
+garantia central do projeto: o veredito só é confirmado com fonte que veio da busca restrita. A lista
+fechada no julgamento também reduz a chance de o modelo inventar uma URL, porque ele não tem para onde
+inventar — as opções estão todas ali.
+
+**Fallbacks em cascata**, cada um com log na tela:
+
+| Falha | Reação |
+|---|---|
+| endpoint recusa structured outputs | repete o julgamento sem schema e lê o JSON de forma tolerante |
+| endpoint recusa a server tool de busca | repete com o plugin legado `{"id":"web", "include_domains":[…]}` |
+| engine não aceita `allowed_domains` (busca nativa em endpoint Google) | repete a busca sem `engine`, no automático, que passa a usar a Exa por causa da lista |
+| busca volta sem anotação | segue para o julgamento com evidência vazia; a auditoria rebaixa para NÃO VERIFICADO |
+
+**Custo:** o OpenRouter devolve `usage.cost` em toda resposta; quando existe, ele tem prioridade sobre a
+estimativa de tabela. A estimativa em `config.js` (US$ 4/US$ 20 por milhão para o Opus 5.5; US$ 0,01 por
+busca, US$ 0,007 na Exa) serve para quando o campo não vem.
+
+**Listagem de modelos:** o catálogo do OpenRouter tem dezenas de milhares de linhas, então não vai inteiro
+para o navegador. O proxy `/api/openrouter/models` filtra por `q`, ordena por `created`, corta em 100 e
+devolve só `id`, `name`, `context_length` e preço. O resultado é cacheado por 10 minutos no servidor.

@@ -4,14 +4,19 @@ Checagem de fatos **ao vivo** para debates. A página transcreve a fala pelo mic
 afirmação checável do que é opinião, verifica cada afirmação com busca restrita a uma lista de veículos
 de imprensa e mostra o resultado **sobre o vídeo**, com um duotone verde ou vermelho e a matéria citada.
 
+A API é a do **[OpenRouter](https://openrouter.ai)** por padrão — uma chave `sk-or-v1-…` dá acesso a
+Claude, GPT e Gemini. A Anthropic direta continua disponível como alternativa.
+
 ```
  microfone ──► Web Speech API ──► janelas de transcrição
                                         │
                                         ▼
-                              triagem (Claude)  ──► opinião / previsão / promessa: descartadas
+                              triagem (Claude Haiku)  ──► opinião / previsão / promessa: descartadas
                                         │
                                         ▼
-                    verificação com web_search restrita por allowed_domains
+              verificação em duas fases, com busca restrita por allowed_domains
+                     fase 1: busca (openrouter:web_search)  ──► citações reais
+                     fase 2: julgamento com lista fechada   ──► veredito + fonte
                                         │
                                         ▼
                     auditoria: a URL citada veio mesmo da busca?
@@ -34,7 +39,7 @@ de imprensa e mostra o resultado **sobre o vídeo**, com um duotone verde ou ver
 |---|---|
 | **Node.js 18+** | [nodejs.org](https://nodejs.org) — confira com `node -v`. O projeto **não tem dependências**, então não é preciso `npm install`. |
 | **Chrome ou Edge** no desktop | A Web Speech API não existe no Firefox nem no Safari. No celular, o Chrome também não transcreve de forma confiável. |
-| **Chave da API da Anthropic** | Em [console.anthropic.com](https://console.anthropic.com) → *API Keys*. É paga por uso: uma checagem custa alguns centavos de dólar (veja [Custo](#modelos-custo-e-configuração)). |
+| **Chave do OpenRouter** | Em [openrouter.ai/workspaces/default/keys](https://openrouter.ai/workspaces/default/keys) → *Create key*. É paga por uso: uma checagem custa alguns centavos de dólar (veja [Custo](#modelos-custo-e-configuração)). |
 | **Microfone** | Ou use **entrada manual**: cole o trecho falado no campo de texto e ele segue o mesmo pipeline. |
 
 ### Passo a passo
@@ -67,11 +72,14 @@ copy .env.example .env
 Abra o arquivo num editor de texto e deixe a linha assim — sem aspas, sem espaço depois do `=`:
 
 ```
-ANTHROPIC_API_KEY=sk-ant-api03-...
+OPENROUTER_API_KEY=sk-or-v1-...
 ```
 
 O `.env` fica só na sua máquina (`/.gitignore` já o exclui) e **nunca é enviado ao navegador**: o
 `server.js` guarda a chave e faz o proxy das chamadas.
+
+Se você tiver só uma chave da Anthropic, preencha `ANTHROPIC_API_KEY=sk-ant-…` e escolha o provedor
+**Anthropic (direto)** nas configurações — tudo o mais funciona igual.
 
 **4. Suba o servidor**
 
@@ -85,7 +93,8 @@ Saída esperada:
   naubert-bot · checagem ao vivo
   http://localhost:8787
 
-  chave da API: sk-ant-…abcd
+  OpenRouter:  sk-or-v1-…abcd
+  Anthropic:   ausente (opcional)
 ```
 
 Essa janela do terminal precisa ficar aberta. `Ctrl+C` encerra.
@@ -102,7 +111,7 @@ fica bloqueado.
 **6. Faça o teste de fumaça (sem gastar API)**
 
 - Clique em **Simulação** → a tela inteira se mexe: transcrição, cartões, duotone, fonte.
-- Abra **Configurações → testar conexão** → deve aparecer “proxy ok · chave sk-ant-…”.
+- Abra **Configurações → testar conexão** → deve aparecer “proxy ativo · openrouter · chave sk-or-v1-…”.
 
 **7. Configure para o debate de verdade**
 
@@ -110,8 +119,12 @@ Em **Configurações**:
 
 1. cole o **link do vídeo** (YouTube renderiza embutido; Globo Play abre em janela externa);
 2. revise a **lista de veículos** (presets prontos, ou cole os seus domínios);
-3. escolha o **modelo** — Opus 5.5 é o padrão; Haiku 5.5 na triagem reduz o custo;
-4. **salvar**.
+3. confira o **modelo** — `anthropic/claude-opus-5.5` é o padrão e
+   `anthropic/claude-haiku-5.5` faz a triagem. O botão **listar modelos** busca o catálogo do OpenRouter
+   e preenche o campo com os preços;
+4. escolha a **engine de busca** (`automático` já usa a busca nativa do Claude) e quantos resultados
+   por busca;
+5. **salvar**.
 
 De volta à tela, clique em **Iniciar escuta** e autorize o microfone. Se estiver usando a Globo Play,
 clique em **janela flutuante** e arraste a janelinha para cima do vídeo.
@@ -122,22 +135,23 @@ clique em **janela flutuante** e arraste a janelinha para cima do vídeo.
 |---|---|
 | `npm: command not found` | Instale o Node em [nodejs.org](https://nodejs.org) e reabra o terminal. |
 | `Port 8787 already in use` | Use outra porta: `PORT=9090 npm start` (mac/Linux), `set PORT=9090 && npm start` (cmd) ou `$env:PORT=9090; npm start` (PowerShell). Depois abra `http://localhost:9090`. |
-| “proxy sem ANTHROPIC_API_KEY” | O `.env` não existe, está na pasta errada ou a chave está vazia. O servidor **lê o `.env` só ao iniciar**: edite e rode `npm start` de novo. |
+| “proxy sem OPENROUTER_API_KEY” | O `.env` não existe, está na pasta errada ou a chave está vazia. O servidor **lê o `.env` só ao iniciar**: edite e rode `npm start` de novo. |
 | “proxy inacessível” na página | O terminal do `npm start` foi fechado — suba de novo. |
 | Microfone bloqueado | Permita no cadeado da barra de endereço. Se a página estiver dentro de um preview embutido, abra em aba própria. |
 | Nada é transcrito | Use Chrome/Edge; a transcrição depende dos servidores do Google e de internet. Teste com **entrada manual**. |
-| 401 na checagem | Chave inválida ou revogada: gere outra no console e atualize o `.env`. |
+| 401 na checagem | Chave inválida ou revogada: gere outra em [openrouter.ai/workspaces/default/keys](https://openrouter.ai/workspaces/default/keys) e atualize o `.env`. |
+| 402 na checagem | Sem créditos no OpenRouter. Recarregue em [openrouter.ai/credits](https://openrouter.ai/credits) ou troque para um modelo mais barato na triagem. |
 
 ### Onde ficam as configurações
 
 - **Chave da API e porta** → `.env`, na pasta do projeto (só no servidor).
-- **Modelo, veículos, ritmo, vídeo, duotone** → `localStorage` do seu navegador, por navegador e por perfil.
-  O botão **restaurar padrões** nas configurações volta tudo ao início.
+- **Provedor, modelo, engine de busca, veículos, ritmo, vídeo, duotone** → `localStorage` do seu navegador,
+  por navegador e por perfil. O botão **restaurar padrões** nas configurações volta tudo ao início.
 
 ### Rodar os testes
 
 ```bash
-npm test     # 22 testes da auditoria e do pipeline
+npm test       # 36 testes da auditoria, do pipeline e do adaptador do OpenRouter
 npm run check  # sintaxe de todos os arquivos + testes
 ```
 
@@ -149,12 +163,12 @@ npm run check  # sintaxe de todos os arquivos + testes
 |---|---|---|
 | Transcrição | O Chrome transcreve a fala; o segmentador fecha janelas de ~260 caracteres ou 30 s, o que vier primeiro, e guarda as últimas frases como contexto | `assets/js/speech.js` |
 | Triagem | O Claude recebe o trecho e devolve afirmações classificadas como `checavel`, `opiniao`, `previsao`, `promessa`, `pergunta` ou `ataque_pessoal`, com prioridade de 1 a 3 | `assets/js/pipeline.js` |
-| Verificação | Cada afirmação checável vira uma chamada com a ferramenta `web_search` limitada por `allowed_domains` à sua lista de veículos | `assets/js/pipeline.js` |
+| Verificação | Cada afirmação checável vira uma busca limitada por `allowed_domains` à sua lista de veículos, seguida de um julgamento com a lista fechada de URLs encontradas | `assets/js/providers.js` |
 | Auditoria | Confere se cada URL citada apareceu nos resultados da busca, se o domínio está na lista e se o modelo a citou | `assets/js/audit.js` |
 | Resultado | Duotone no vídeo, cartão sobreposto, lista lateral com fonte, trecho, confiança e latência | `assets/js/ui.js` |
-| Custo | Contador de chamadas, buscas e custo estimado em dólar | `assets/js/pipeline.js` |
+| Custo | Contador de chamadas, buscas e custo em dólar (usa o `usage.cost` do OpenRouter quando existe) | `assets/js/pipeline.js` |
 
-A triagem e a verificação são **duas chamadas separadas** — é isso que permite descartar opinião antes de
+A triagem e a verificação são **chamadas separadas** — é isso que permite descartar opinião antes de
 gastar uma busca, e é isso que torna o sistema mais lento que um “detector” instantâneo.
 
 ### Os vereditos
@@ -171,12 +185,57 @@ gastar uma busca, e é isso que torna o sistema mais lento que um “detector”
 
 ---
 
+## OpenRouter (padrão) e Anthropic direta
+
+A interface da página é a mesma; o que muda é o transporte e o formato da busca.
+
+| | OpenRouter | Anthropic direto |
+|---|---|---|
+| Endpoint | `POST /api/v1/chat/completions` (formato OpenAI) | `POST /v1/messages` |
+| Chave | `sk-or-v1-…` (dá acesso a vários modelos) | `sk-ant-…` |
+| Busca | ferramenta `openrouter:web_search` | ferramenta `web_search_20250305` |
+| Filtro | `allowed_domains` nos parâmetros da ferramenta | `allowed_domains` na definição da ferramenta |
+| Citações | `message.annotations[]` (`url_citation`) | blocos `web_search_tool_result` |
+| Chamadas por afirmação | **duas**: busca e depois julgamento | uma |
+
+No OpenRouter a verificação é dividida em duas chamadas porque structured outputs e busca na mesma
+requisição fazem o provedor **suprimir as anotações** de citação — e sem anotação não há auditoria. Então:
+
+1. **busca** — o modelo recebe a afirmação e a ferramenta de busca restrita; devolve um resumo em texto
+   com `url_citation` para cada fonte que usou. Nada de JSON nesta chamada.
+2. **julgamento** — o modelo recebe o resumo, as fontes e só as URLs que voltaram da busca (lista fechada)
+   e devolve o veredito em JSON validado por schema.
+
+Se o endpoint recusar a server tool (`400`/`404`/`422` falando de `tool`), o código repete a busca com o
+plugin legado `{"id":"web", "include_domains":[...]}`, que também devolve `url_citation`. Se a conta recusar
+structured outputs, o julgamento é repetido sem schema e o JSON é lido de forma tolerante.
+
+### Engines de busca
+
+O campo **engine** decide quem executa a busca no OpenRouter:
+
+| Engine | Custo por busca | Observação |
+|---|---|---|
+| `automático` | conforme a escolhida | usa a busca nativa do modelo; sem busca nativa, cai para Exa |
+| `nativa do provedor` | preço do provedor | melhor resultado com Claude/GPT/Grok; a busca nativa do **Gemini não aceita filtro de domínios** — nesse caso o app repete a busca no automático (que usa Exa por causa da lista) |
+| `exa` | US$ 0,007 | neural + palavra-chave, devolve trechos (`highlights`) |
+| `parallel` | US$ 0,001–0,005 | rápida |
+| `perplexity` | US$ 0,005 | resultados ranqueados |
+| `firecrawl` | US$ 0,005 + por resultado | recusada se a conta exigir ZDR |
+
+`allowed_domains` é respeitado pela Exa, Parallel, Firecrawl, Perplexity e pela busca nativa da Anthropic/OpenAI/Grok.
+Quando o endpoint escolhido não filtra (caso típico: Claude roteado para o Google Vertex), a API devolve 400 e
+o app repete a busca sem `engine`, no automático, que passa a usar a Exa porque há lista de domínios.
+
+---
+
 ## Por que não é instantâneo
 
 Uma checagem leva tipicamente **6 a 15 segundos**:
 
 - triagem: 1–4 s;
-- verificação: 3–12 s, dependendo de quantas buscas o modelo decide fazer;
+- busca: 2–8 s, dependendo de quantas buscas o modelo decide fazer;
+- julgamento: 1–4 s;
 - com `concurrency: 2`, duas afirmações rodam em paralelo, mas a ordem da fila prioriza o que é central no debate.
 
 O atraso entre a fala e o veredito aparece em cada cartão (`9,2 s após a fala`). Se você diminuir a janela
@@ -214,7 +273,27 @@ para o vídeo voltar ao normal entre uma checagem e outra.
 
 ## A busca restrita
 
-O parâmetro `allowed_domains` recebe **domínios puros**, sem esquema:
+Nada de “procure na web e me diga”: a ferramenta recebe a lista fechada de domínios. No OpenRouter:
+
+```json
+{
+  "tools": [
+    {
+      "type": "openrouter:web_search",
+      "parameters": {
+        "max_results": 5,
+        "max_uses": 3,
+        "engine": "auto",
+        "allowed_domains": ["g1.globo.com", "folha.uol.com.br", "ibge.gov.br"],
+        "user_location": { "country": "BR", "city": "Lago Verde", "region": "Maranhão" }
+      }
+    }
+  ],
+  "max_tool_calls": 4
+}
+```
+
+Na Anthropic direta, o equivalente é:
 
 ```json
 {
@@ -228,15 +307,14 @@ O parâmetro `allowed_domains` recebe **domínios puros**, sem esquema:
 
 Regras que o código respeita:
 
+- `allowed_domains` recebe **domínios puros**, sem esquema e sem `www`;
 - subdomínios entram automaticamente (`g1.globo.com` cobre `sub.g1.globo.com`);
 - subcaminhos são aceitos (`g1.globo.com/fato-ou-fake` restringe àquele caminho);
-- `allowed_domains` e `blocked_domains` são mutuamente exclusivos — o código usa só o primeiro;
+- `allowed_domains` e `blocked_domains`/`excluded_domains` são mutuamente exclusivos — o código usa só o primeiro;
 - listas muito longas podem devolver `request_too_large`; a interface avisa acima de 25 domínios e bloqueia acima de 45;
-- `web_search_20250305` é o padrão porque funciona em todos os modelos e devolve os resultados em blocos
-  previsíveis. As versões `20260209`/`20260318` usam filtragem dinâmica e aninham os resultados dentro de
-  execução de código; a auditoria entende os dois formatos, mas a versão básica é mais fácil de depurar.
-- nas versões com filtragem dinâmica o código envia `allowed_callers: ["direct"]`: sem isso, a API espera
-  executar a busca por código e pode devolver 400.
+- na Anthropic, `web_search_20250305` é o padrão porque funciona em todos os modelos e devolve os resultados
+  em blocos previsíveis; as versões `20260209`/`20260318` usam filtragem dinâmica e aninham os resultados
+  dentro de execução de código. A auditoria entende os dois formatos.
 
 ### Veículos pré-estabelecidos
 
@@ -249,8 +327,9 @@ IPEA, TSE, STF, BCB, Reuters, BBC). Há presets na tela de configurações para 
 
 ## A auditoria de fontes
 
-Sem isso, um modelo de linguagem pode inventar uma URL plausível. Toda resposta da busca vem com
-`server_tool_use` (a consulta), `web_search_tool_result` (o que voltou) e citações. A auditoria faz três perguntas:
+Sem isso, um modelo de linguagem pode inventar uma URL plausível. No OpenRouter toda busca volta com
+`message.annotations[]` — cada `url_citation` tem `url`, `title` e `content`. É esse array que vira a
+evidência, e é ele que o julgamento recebe como lista fechada. A auditoria faz três perguntas:
 
 1. **O domínio está na lista?** (`domainOk`)
 2. **A URL apareceu nos resultados desta busca?** (`seenInSearch`) — comparação normalizada, ignorando `www`,
@@ -265,31 +344,36 @@ nunca afirma “verdadeiro” ou “falso” sem uma fonte que tenha voltado da 
 
 ## Modelos, custo e configuração
 
-O padrão é `claude-opus-5-5`. A triagem pode usar um modelo mais barato (`claude-haiku-5-5`) para reduzir custo,
-já que ela só classifica texto. O raciocínio adaptativo fica ligado na checagem e desligado na triagem.
+O padrão é `anthropic/claude-opus-5.5`. A triagem pode usar um modelo mais barato
+(`anthropic/claude-haiku-5.5`) para reduzir custo, já que ela só classifica texto. O campo
+**modelo do julgamento** permite ainda usar um modelo forte só no veredito. O botão **listar modelos**
+puxa o catálogo do OpenRouter por um proxy e preenche o seletor com os preços de cada um.
 
-Preços de referência (API da Anthropic, outubro de 2026):
+Preços de referência (OpenRouter, outubro de 2026):
 
 | Modelo | Entrada / 1M | Saída / 1M |
 |---|---|---|
-| Opus 5.5 | US$ 4 | US$ 20 |
-| Sonnet 5.5 | US$ 2 | US$ 10 |
-| Haiku 5.5 | US$ 0,10 | US$ 0,50 |
+| `anthropic/claude-opus-5.5` | US$ 4 | US$ 20 |
+| `anthropic/claude-sonnet-5.5` | US$ 2 | US$ 10 |
+| `anthropic/claude-haiku-5.5` | US$ 0,10 | US$ 0,50 |
 
-Cada busca custa US$ 10 por 1.000 (US$ 0,01 por busca). Uma checagem com Opus 5.5, 3 mil tokens de entrada,
-800 de saída e 2 buscas fica em torno de **US$ 0,05**. Um debate de duas horas com 40 afirmações checadas
-fica na casa de **US$ 2**. O contador na tela soma isso em tempo real, incluindo as buscas.
+Cada busca custa em torno de US$ 0,01 (US$ 0,007 na Exa). Uma checagem com Opus 5.5, 3 mil tokens de
+entrada, 800 de saída e 2 buscas fica em torno de **US$ 0,05**. Um debate de duas horas com 40 afirmações
+checadas fica na casa de **US$ 2**. O contador na tela soma isso em tempo real, incluindo as buscas, e
+prefere o `usage.cost` que o OpenRouter devolve em cada resposta.
 
 ### Configurações que importam
 
 | Campo | Padrão | Efeito |
 |---|---|---|
+| `provider` | OpenRouter | transporte e formato das chamadas |
 | `chunkChars` / `chunkSeconds` | 260 / 30 s | tamanho da janela de transcrição |
 | `concurrency` | 2 | checagens simultâneas; acima de 3 aumenta risco de 429 |
 | `minPriority` | 2 | 1 = só o que é central; 3 = tudo, inclusive detalhe |
+| `searchEngine` | `auto` | quem executa a busca no OpenRouter |
+| `maxResults` | 5 | resultados por busca |
 | `maxUses` | 4 | teto de buscas por afirmação |
-| `searchTool` | `web_search_20250305` | versão da ferramenta de busca |
-| `model` / `triageModel` | Opus 5.5 / mesmo | modelo de cada etapa |
+| `model` / `triageModel` / `judgeModel` | Opus 5.5 / Haiku 5.5 / vazio | modelo de cada etapa |
 | `duotoneHold` | 14 s | quanto tempo o vídeo fica colorido |
 | `autoDuotone` | ligado | desliga se você só quiser os cartões |
 
@@ -297,17 +381,19 @@ fica na casa de **US$ 2**. O contador na tela soma isso em tempo real, incluindo
 
 ## Segurança e privacidade
 
-- **A chave da API fica no servidor.** O modo padrão é o proxy (`server.js`), que guarda `ANTHROPIC_API_KEY`
-  no processo e nunca a envia ao navegador. O modo “direto” existe para teste e deixa a chave no
-  `localStorage` — não use em máquina compartilhada.
+- **A chave da API fica no servidor.** O modo padrão é o proxy (`server.js`), que guarda
+  `OPENROUTER_API_KEY` no processo e nunca a envia ao navegador. O modo “direto” (com a chave `sk-or-v1-…`
+  no navegador) existe para teste e deixa a chave no `localStorage` — não use em máquina compartilhada.
 - **O áudio vai para o Google.** A Web Speech API do Chrome transcreve nos servidores da Google; a página
   não grava áudio nem mantém arquivo. Se o microfone estiver bloqueado, a transcrição não funciona.
-- **A transcrição vai para a Anthropic** dentro das chamadas de triagem e checagem, junto com os domínios
-  permitidos. Nada é enviado a outros serviços.
+- **A transcrição vai para o OpenRouter** dentro das chamadas de triagem e checagem, junto com os domínios
+  permitidos. O OpenRouter encaminha a requisição ao provedor do modelo escolhido, e a busca é executada
+  pela engine selecionada. Nada é enviado a outros serviços.
 - **O servidor não registra conteúdo.** O log mostra método, rota, status e tempo — nunca o corpo da
   requisição, a transcrição ou a chave.
-- **`PROXY_TOKEN`** opcional exige um header extra em `/api/messages`; útil se você expõe o servidor para fora
-  de localhost. O CORS libera apenas localhost, `*.e2b.app` e o que estiver em `ALLOWED_ORIGINS`.
+- **`PROXY_TOKEN`** opcional exige um header extra em `/api/messages` e `/api/openrouter/*`; útil se você
+  expõe o servidor para fora de localhost. O CORS libera apenas localhost, `*.e2b.app` e o que estiver em
+  `ALLOWED_ORIGINS`.
 - **Nada é publicado automaticamente.** Exportação em Markdown/JSON é manual.
 
 ---
@@ -315,21 +401,23 @@ fica na casa de **US$ 2**. O contador na tela soma isso em tempo real, incluindo
 ## Estrutura
 
 ```
-index.html               tela única
-assets/css/app.css       estética de sala de controle + duotone
-assets/js/config.js      modelos, vereditos, defaults
-assets/js/outlets.js     domínios, presets, normalização e comparação
-assets/js/store.js       localStorage + emissor de eventos
-assets/js/anthropic.js   cliente da Messages API (proxy ou direto)
-assets/js/audit.js       auditoria de fontes (o núcleo anti-invenção)
-assets/js/pipeline.js    triagem, verificação, fila, dedupe, custo
-assets/js/speech.js      Web Speech API + segmentador de janelas
-assets/js/pip.js         janela flutuante (Document Picture-in-Picture)
-assets/js/demo.js        simulação sem API
-assets/js/ui.js          cartões, flash, duotone, ajustes, exportação
-assets/js/app.js         fiação geral
-server.js                servidor estático + proxy da API (sem dependências)
-test/audit.test.mjs      22 testes da auditoria, das degradações automáticas e do formato
+index.html                 tela única
+assets/css/app.css         estética de sala de controle + duotone
+assets/js/config.js        provedores, modelos, engines, preços, defaults
+assets/js/outlets.js       domínios, presets, normalização e comparação
+assets/js/store.js         localStorage + emissor de eventos
+assets/js/client.js        transporte das duas APIs (proxy ou direto)
+assets/js/providers.js     adaptadores: triagem, busca e julgamento de cada provedor
+assets/js/audit.js         auditoria de fontes (o núcleo anti-invenção)
+assets/js/pipeline.js      fila, dedupe, concorrência, custo
+assets/js/speech.js        Web Speech API + segmentador de janelas
+assets/js/pip.js           janela flutuante (Document Picture-in-Picture)
+assets/js/demo.js          simulação sem API
+assets/js/ui.js            cartões, flash, duotone, ajustes, exportação
+assets/js/app.js           fiação geral
+server.js                  servidor estático + proxy das APIs (sem dependências)
+test/audit.test.mjs        auditoria, degradações automáticas e formatos da Anthropic
+test/openrouter.test.mjs   evidências por anotação, duas fases e fallbacks do OpenRouter
 docs/decisoes-tecnicas.md  por que cada escolha foi feita
 ```
 
@@ -342,8 +430,9 @@ npm test
 ```
 
 Cobrem normalização de domínio e URL, regra de subdomínio, extração de evidências (inclusive resultados
-aninhados na filtragem dinâmica), detecção de fonte inventada, rebaixamento de veredito sem fonte e
-normalização de vereditos.
+aninhados na filtragem dinâmica da Anthropic), conversão de `url_citation` em evidência, detecção de fonte
+inventada, rebaixamento de veredito sem fonte, queda para o plugin legado quando a server tool é recusada
+e normalização de vereditos.
 
 ---
 
@@ -376,10 +465,13 @@ substituir o checador.
 | “microfone bloqueado” | permissão negada ou página em `file://` | sirva por `http://localhost` ou https e permita o microfone no cadeado |
 | Nada é transcrito | Firefox/Safari ou Chrome sem rede | use Chrome/Edge; a Web Speech API depende dos servidores do Google |
 | “proxy inacessível” | servidor parado | `npm start` na raiz do projeto |
-| “proxy sem chave” | `.env` ausente | copie `.env.example`, preencha e reinicie |
-| 401 | chave inválida | confira `ANTHROPIC_API_KEY` |
-| 400 em `output_config` | conta/modelo sem structured outputs | o sistema repete sem schema automaticamente; se persistir, preencha o header beta |
-| 400 em `thinking` | modelo antigo (Haiku 4.5) | desligue o raciocínio ou use um modelo 4.6+ |
+| “proxy sem chave” | `.env` ausente | copie `.env.example`, preencha `OPENROUTER_API_KEY` e reinicie |
+| 401 | chave inválida | gere outra em openrouter.ai/workspaces/default/keys e reinicie o servidor |
+| 402 | créditos insuficientes no OpenRouter | recarregue em openrouter.ai/credits ou use modelo mais barato |
+| 404 “no endpoints found” | slug de modelo errado ou sem endpoint compatível | clique em **listar modelos** e copie o slug exato |
+| 400 “web_search / tool” | modelo sem suporte a server tools | o sistema repete com o plugin `web`; se persistir, troque de modelo ou engine |
+| 400 em `response_format` | endpoint sem structured outputs | o sistema repete sem schema automaticamente |
+| `allowed_domains` recusado | filtro não aceito pela engine/modelo | troque a engine para `exa` ou `parallel` |
 | `request_too_large` | lista de domínios enorme | reduza para menos de 25 |
 | 429 / 529 | limite ou sobrecarga | reduza a concorrência e tente de novo |
 | vídeo não aparece | URL não é YouTube ou embed desabilitado | use a janela flutuante ou abra o link em outra janela |
@@ -395,4 +487,4 @@ substituir o checador.
 - fila de revisão humana antes de o cartão ir ao ar;
 - importação de legendas oficiais em vez de microfone;
 - cobertura de outros idiomas e listas de veículos por país;
-- testes de integração com respostas gravadas da API.
+- testes de integração com respostas gravadas das APIs.

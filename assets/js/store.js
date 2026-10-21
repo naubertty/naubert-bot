@@ -4,7 +4,7 @@
 (function (global) {
   'use strict';
   var NB = (global.NB = global.NB || {});
-  var KEY = 'naubert-bot:v1';
+  var KEY = 'naubert-bot:v2'; // v2 = provedor OpenRouter
 
   function deepMerge(base, patch) {
     var out = Array.isArray(base) ? base.slice() : Object.assign({}, base);

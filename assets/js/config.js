@@ -8,9 +8,8 @@
 
   /* ---------------------------------------------------------------- modelos */
 
-  // IDs exatos conforme o catálogo atual da API da Anthropic.
-  // Nunca acrescentar sufixo de data: "claude-opus-5-5", não "claude-opus-5-5-20260401".
-  var MODELS = [
+  /* Anthropic direto: IDs exatos do catálogo, sem sufixo de data. */
+  var ANTHROPIC_MODELS = [
     { id: 'claude-opus-5-5', label: 'Opus 5.5', note: 'mais capaz · mais lento' },
     { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', note: 'equilíbrio' },
     { id: 'claude-haiku-5-5', label: 'Haiku 5.5', note: 'mais rápido' },
@@ -19,6 +18,26 @@
     { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6', note: 'compatível com filtro dinâmico' },
     { id: 'claude-haiku-4-5', label: 'Haiku 4.5', note: 'rápido, contexto menor' }
   ];
+
+  /* OpenRouter: slugs com barra. A lista é só uma sugestão — o botão
+   * "listar modelos" busca o catálogo real e aceita qualquer slug. */
+  var OPENROUTER_MODELS = [
+    { id: 'anthropic/claude-opus-5.5', label: 'Claude Opus 5.5', note: 'padrão · melhor raciocínio' },
+    { id: 'anthropic/claude-sonnet-5.5', label: 'Claude Sonnet 5.5', note: 'equilíbrio' },
+    { id: 'anthropic/claude-haiku-5.5', label: 'Claude Haiku 5.5', note: 'rápido e barato' },
+    { id: 'anthropic/claude-sonnet-4.6', label: 'Claude Sonnet 4.6', note: 'geração anterior' },
+    { id: 'openai/gpt-5.2', label: 'GPT-5.2', note: 'alternativa' }
+  ];
+
+  var SEARCH_ENGINES = [
+    { id: 'auto', label: 'Automático (padrão)', note: 'busca nativa quando existe; com lista de domínios cai para Exa se o provedor não filtrar' },
+    { id: 'native', label: 'Nativa do provedor', note: 'melhor com Claude/GPT/Grok; Gemini não aceita filtro de domínios (o app repete no automático)' },
+    { id: 'exa', label: 'Exa', note: 'busca neural + palavra-chave; US$ 0,007 por requisição' },
+    { id: 'parallel', label: 'Parallel', note: 'rápida; US$ 0,005 por requisição' },
+    { id: 'perplexity', label: 'Perplexity', note: 'resultados ranqueados; US$ 0,005 por requisição' },
+    { id: 'firecrawl', label: 'Firecrawl', note: 'cobra por resultado; recusada se você exige ZDR' }
+  ];
+
 
   /* ------------------------------------------------- versões da web search */
 
@@ -111,19 +130,30 @@
   /* -------------------------------------------------------------- defaults */
 
   var DEFAULTS = {
+    // Provedor
+    provider: 'openrouter',            // 'openrouter' | 'anthropic'
+
     // Conexão
-    apiMode: 'proxy',            // 'proxy' | 'direct'
-    proxyBase: '',               // vazio = mesma origem da página
-    proxyToken: '',              // só quando o servidor define PROXY_TOKEN (servidor embutido)
-    apiKey: '',                  // somente no modo 'direct'
-    model: 'claude-opus-5-5',
-    triageModel: '',             // vazio = usa o mesmo modelo
-    betaHeader: '',              // ex.: 'structured-outputs-2025-11-13' se a conta exigir
+    apiMode: 'proxy',                  // 'proxy' | 'direct'
+    proxyBase: '',                     // vazio = mesma origem da página
+    proxyToken: '',                    // só quando o servidor define PROXY_TOKEN
+    apiKey: '',                        // Anthropic, modo 'direct'
+    openrouterKey: '',                 // OpenRouter, modo 'direct'
+    orReferer: '',                     // header HTTP-Referer (opcional)
+    orTitle: 'naubert-bot',            // header X-Title (opcional)
+
+    // Modelos
+    model: 'anthropic/claude-opus-5.5',
+    triageModel: 'anthropic/claude-haiku-5.5', // vazio = mesmo modelo
+    judgeModel: '',                    // OpenRouter: modelo do julgamento (vazio = model)
+    betaHeader: '',                    // Anthropic: ex.: 'structured-outputs-2025-11-13'
 
     // Busca
-    searchTool: 'web_search_20250305',
+    searchEngine: 'auto',              // OpenRouter: auto | native | exa | parallel | perplexity | firecrawl
+    maxResults: 5,                     // OpenRouter: resultados por busca
+    searchTool: 'web_search_20250305', // Anthropic: versão da ferramenta
     maxUses: 4,
-    responseInclusion: 'full',   // 'full' | 'excluded' (só 20260318)
+    responseInclusion: 'full',         // 'full' | 'excluded' (só 20260318)
     userLocation: {
       city: 'Lago Verde',
       region: 'Maranhão',
@@ -131,22 +161,22 @@
       timezone: 'America/Sao_Paulo'
     },
 
-    // Raciocínio
-    thinkingTriage: 'none',      // 'none' | 'adaptive'
-    thinkingVerify: 'adaptive',  // 'none' | 'adaptive'
+    // Raciocínio (só Anthropic; no OpenRouter o modelo decide)
+    thinkingTriage: 'none',            // 'none' | 'adaptive'
+    thinkingVerify: 'adaptive',        // 'none' | 'adaptive'
     maxTokensTriage: 3000,
     maxTokensVerify: 8000,
 
     // Transcrição
     lang: 'pt-BR',
-    chunkChars: 260,             // dispara a triagem ao acumular N caracteres
-    chunkSeconds: 30,            // ...ou após N segundos sem término de frase
-    contextSentences: 2,         // sobreposição de contexto entre janelas
+    chunkChars: 260,
+    chunkSeconds: 30,
+    contextSentences: 2,
 
     // Pipeline
-    minPriority: 2,              // 1 = só as urgentes, 2 = urgentes + médias
-    concurrency: 2,              // checagens simultâneas
-    dedupeWindow: 120,           // segundos em que a mesma afirmação não é rechecada
+    minPriority: 2,
+    concurrency: 2,
+    dedupeWindow: 120,
     minClaimChars: 28,
 
     // Vídeo
@@ -157,6 +187,42 @@
     autoDuotone: true
   };
 
+  /* --------------------------------------------------------------- preços */
+
+  // US$ por 1 milhão de tokens [entrada, saída]. Usado só para estimar quando a
+  // API não devolve o custo exato (o OpenRouter devolve).
+  var PRICES = {
+    'claude-opus-5-5': [4, 20],
+    'claude-opus-5': [5, 25],
+    'claude-opus-4-8': [5, 25],
+    'claude-opus-4-7': [5, 25],
+    'claude-opus-4-6': [5, 25],
+    'claude-sonnet-5-5': [2, 10],
+    'claude-sonnet-5': [2, 10],
+    'claude-sonnet-4-6': [3, 15],
+    'claude-haiku-5-5': [0.1, 0.5],
+    'claude-haiku-4-5': [1, 5],
+    'anthropic/claude-opus-5.5': [4, 20],
+    'anthropic/claude-sonnet-5.5': [2, 10],
+    'anthropic/claude-haiku-5.5': [0.1, 0.5],
+    'anthropic/claude-sonnet-4.6': [3, 15]
+  };
+
+  function priceFor(provider, model) {
+    if (PRICES[model]) return PRICES[model];
+    var m = String(model || '').toLowerCase();
+    if (/haiku/.test(m)) return [1, 5];
+    if (/sonnet/.test(m)) return [3, 15];
+    if (/opus/.test(m)) return [4, 20];
+    if (/mini|flash|lite|free/.test(m)) return [0.5, 2];
+    return [4, 20];
+  }
+
+  function searchPrice(cfg) {
+    if (cfg && cfg.provider === 'openrouter' && cfg.searchEngine === 'exa') return 0.007;
+    return 0.01;
+  }
+
   /* ---------------------------------------------------------------- helper */
 
   function defaults() {
@@ -164,8 +230,21 @@
   }
 
   NB.config = {
-    MODELS: MODELS,
+    PROVIDERS: [
+      { id: 'openrouter', label: 'OpenRouter', note: 'uma chave para vários modelos' },
+      { id: 'anthropic', label: 'Anthropic (direto)', note: 'precisa de chave da Anthropic' }
+    ],
+    ANTHROPIC_MODELS: ANTHROPIC_MODELS,
+    OPENROUTER_MODELS: OPENROUTER_MODELS,
+    MODELS: ANTHROPIC_MODELS, // compatibilidade
+    SEARCH_ENGINES: SEARCH_ENGINES,
     SEARCH_TOOLS: SEARCH_TOOLS,
+    PRICES: PRICES,
+    priceFor: priceFor,
+    searchPrice: searchPrice,
+    modelPresets: function (provider) {
+      return provider === 'anthropic' ? ANTHROPIC_MODELS : OPENROUTER_MODELS;
+    },
     VERDICTS: VERDICTS,
     VERDICT_RANK: VERDICT_RANK,
     DEFAULTS: DEFAULTS,

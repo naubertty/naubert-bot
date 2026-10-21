@@ -202,8 +202,11 @@
         return;
       }
       NB.UI.exportData(results, {
+        provider: store.state.provider,
         model: store.state.model,
-        searchTool: store.state.searchTool,
+        search: store.state.provider === 'openrouter'
+          ? 'openrouter:web_search · ' + store.state.searchEngine
+          : store.state.searchTool,
         domains: store.outlets,
         note: 'checagem assistida por modelo de linguagem'
       });
@@ -257,6 +260,8 @@
     });
 
     el.btnTestApi.addEventListener('click', testApi);
+    var btnList = $('btnListModels');
+    if (btnList) btnList.addEventListener('click', listModels);
 
     setupPip();
     NB.UI.renderVideo(store.state);
@@ -329,7 +334,11 @@
       return;
     }
     if (store.state.apiMode === 'proxy' && serverKeyReady === false) {
-      NB.UI.toast('O proxy está sem ANTHROPIC_API_KEY. Preencha o .env e reinicie o servidor — ou use o modo direto.', 'warn', 7000);
+      NB.UI.toast(
+        'O proxy está sem chave do provedor escolhido. Preencha o .env e reinicie o servidor — ou use o modo direto.',
+        'warn',
+        7000
+      );
       NB.UI.openSettings();
       return;
     }
@@ -435,7 +444,9 @@
 
   function isConfigured() {
     var s = store.state;
-    if (s.apiMode === 'direct') return !!s.apiKey;
+    if (s.apiMode === 'direct') {
+      return s.provider === 'openrouter' ? !!s.openrouterKey : !!s.apiKey;
+    }
     return true; // no proxy, a chave está no servidor; a resposta real dirá se falta
   }
 
@@ -443,29 +454,51 @@
 
   async function checkHealth(quiet) {
     var s = store.state;
+    var provider = s.provider;
+
     if (s.apiMode === 'direct') {
-      NB.UI.setApiStatus(s.apiKey ? 'ok' : 'warn', s.apiKey ? 'modo direto · chave local' : 'modo direto · sem chave');
+      var hasKey = provider === 'openrouter' ? !!s.openrouterKey : !!s.apiKey;
+      serverKeyReady = hasKey;
+      NB.UI.setApiStatus(
+        hasKey ? 'ok' : 'warn',
+        'direto · ' + (hasKey ? 'chave no navegador' : 'sem chave')
+      );
       return;
     }
+
     var h = await NB.api.health(s);
-    if (h && h.ok) {
-      serverKeyReady = !!h.keyConfigured;
-      if (h.keyConfigured) {
-        NB.UI.setApiStatus('ok', 'proxy ok · chave no servidor');
-        NB.UI.log('ok', 'servidor proxy ativo · chave ' + (h.keyMasked || 'configurada'));
-      } else {
-        NB.UI.setApiStatus('warn', 'proxy sem ANTHROPIC_API_KEY');
-        NB.UI.log('warn', 'proxy no ar, mas sem chave: preencha ANTHROPIC_API_KEY no .env e reinicie.');
-        if (!quiet) NB.UI.toast('O proxy está no ar, mas falta a chave no .env do servidor.', 'warn', 6000);
+    var info = h && h.providers ? h.providers[provider] : null;
+    var configured = info ? !!info.keyConfigured : !!(h && h.keyConfigured);
+    serverKeyReady = configured;
+
+    if (h && h.ok && configured) {
+      NB.UI.setApiStatus(
+        'ok',
+        (provider === 'openrouter' ? 'OpenRouter' : 'Anthropic') + ' · chave no servidor'
+      );
+      NB.UI.log('ok', 'proxy ativo · ' + provider + ' · chave ' + ((info && info.keyMasked) || 'configurada'));
+    } else if (h && h.ok && !configured) {
+      NB.UI.setApiStatus('warn', 'proxy sem chave (' + provider + ')');
+      NB.UI.log(
+        'warn',
+        'proxy no ar, mas falta ' + (provider === 'openrouter' ? 'OPENROUTER_API_KEY' : 'ANTHROPIC_API_KEY') +
+          ' no .env. Preencha e reinicie o servidor.'
+      );
+      if (!quiet) {
+        NB.UI.toast(
+          'O proxy está no ar, mas falta a chave do ' + (provider === 'openrouter' ? 'OpenRouter' : 'Anthropic') +
+            ' no .env do servidor.',
+          'warn',
+          6500
+        );
       }
     } else {
-      serverKeyReady = false;
       NB.UI.setApiStatus('err', 'proxy inacessível');
       if (!healthChecked) {
-        NB.UI.log('warn', 'proxy não encontrado (' + (h.detail || '') + '). Rode "npm start" ou use o modo direto com sua chave.');
+        NB.UI.log('warn', 'proxy não encontrado (' + ((h && h.detail) || '') + '). Rode "npm start".');
       }
       if (!quiet && !healthChecked) {
-        NB.UI.toast('Servidor proxy não encontrado. Rode "npm start" ou abra as configurações e use o modo direto.', 'warn', 7000);
+        NB.UI.toast('Servidor proxy não encontrado. Rode "npm start" ou use o modo direto nas configurações.', 'warn', 7000);
       }
     }
     healthChecked = true;
@@ -473,43 +506,58 @@
 
   async function testApi() {
     var out = el.testApiOut;
+    if (!out) return;
     out.className = 'test-out';
     out.textContent = 'testando…';
     el.btnTestApi.disabled = true;
 
     try {
-      var read;
+      var read = null;
       try {
         read = NB.UI.readSettings();
       } catch (e) {
         read = null;
       }
       var cfg = Object.assign({}, store.state, read ? read.patch : {});
-      var proxy = (cfg.proxyBase || '').replace(/\/+$/, '');
-      var target = cfg.apiMode === 'proxy' ? proxy + '/api/health' : 'https://api.anthropic.com/v1/messages';
+      var isOR = cfg.provider === 'openrouter';
 
       if (cfg.apiMode === 'proxy') {
         var h = await NB.api.health(cfg);
         if (!h.ok) throw new Error('proxy inacessível: ' + (h.detail || 'sem resposta'));
-        if (!h.keyConfigured) throw new Error('proxy no ar, mas sem ANTHROPIC_API_KEY no .env');
-        out.className = 'test-out ok';
-        out.textContent = 'proxy ok · chave ' + (h.keyMasked || 'configurada');
-        NB.UI.setApiStatus('ok', 'proxy ok · chave no servidor');
-        return;
+        var info = h.providers && h.providers[cfg.provider];
+        if (info && !info.keyConfigured) {
+          throw new Error(
+            'proxy no ar, mas falta ' + (isOR ? 'OPENROUTER_API_KEY' : 'ANTHROPIC_API_KEY') + ' no .env'
+          );
+        }
+      } else {
+        if (isOR && !cfg.openrouterKey) throw new Error('informe a chave do OpenRouter para o modo direto');
+        if (!isOR && !cfg.apiKey) throw new Error('informe a chave da Anthropic para o modo direto');
       }
 
-      if (!cfg.apiKey) throw new Error('informe a chave para o modo direto');
-      var res = await NB.api.create(cfg, {
-        model: cfg.model,
-        max_tokens: 16,
-        messages: [{ role: 'user', content: 'Responda apenas: ok' }]
-      });
-      var txt = (res.content || []).filter(function (b) {
-        return b.type === 'text';
-      })[0];
-      out.className = 'test-out ok';
-      out.textContent = 'conexão ok · ' + (txt ? txt.text.slice(0, 30) : 'resposta vazia');
-      NB.UI.setApiStatus('ok', 'API respondendo · ' + cfg.model);
+      // Chamada mínima de verdade: valida chave, modelo e endpoint.
+      if (isOR) {
+        var res = await NB.api.chat(cfg, {
+          model: cfg.model,
+          messages: [{ role: 'user', content: 'Responda apenas: ok' }],
+          max_tokens: 16
+        });
+        var txt = NB.providers.chatText(res);
+        out.className = 'test-out ok';
+        out.textContent = 'OpenRouter ok · ' + cfg.model + ' · "' + String(txt).slice(0, 20) + '"';
+      } else {
+        var ares = await NB.api.messages(cfg, {
+          model: cfg.model,
+          max_tokens: 16,
+          messages: [{ role: 'user', content: 'Responda apenas: ok' }]
+        });
+        var block = (ares.content || []).filter(function (b) {
+          return b.type === 'text';
+        })[0];
+        out.className = 'test-out ok';
+        out.textContent = 'Anthropic ok · ' + cfg.model + ' · "' + (block ? block.text.slice(0, 20) : '') + '"';
+      }
+      NB.UI.setApiStatus('ok', cfg.provider + ' · ' + cfg.model);
     } catch (err) {
       out.className = 'test-out err';
       out.textContent = err.message || String(err);
@@ -517,6 +565,29 @@
       NB.UI.log('error', 'teste de conexão: ' + (err.message || err));
     } finally {
       el.btnTestApi.disabled = false;
+    }
+  }
+
+  async function listModels() {
+    var out = el.testApiOut;
+    var btn = $('btnListModels');
+    if (!btn) return;
+    out.className = 'test-out';
+    out.textContent = 'buscando catálogo…';
+    btn.disabled = true;
+    try {
+      var data = await NB.api.models(store.state, '');
+      NB.UI.setModelList(data.models || []);
+      out.className = 'test-out ok';
+      out.textContent = (data.models || []).length + ' modelos carregados no seletor';
+      NB.UI.log('info', 'catálogo do OpenRouter: ' + data.total + ' modelos, ' + (data.models || []).length + ' no seletor');
+      NB.UI.toast('Modelos carregados. O campo agora sugere os slugs reais — dá para digitar qualquer um.', null, 4500);
+    } catch (err) {
+      out.className = 'test-out err';
+      out.textContent = err.message || String(err);
+      NB.UI.log('error', 'não foi possível listar modelos: ' + (err.message || err));
+    } finally {
+      btn.disabled = false;
     }
   }
 

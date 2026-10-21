@@ -31,7 +31,7 @@ function loadNB() {
   };
   sandbox.window = sandbox;
   vm.createContext(sandbox);
-  for (const file of ['config.js', 'outlets.js', 'store.js', 'audit.js', 'pipeline.js']) {
+  for (const file of ['config.js', 'outlets.js', 'store.js', 'audit.js', 'pipeline.js', 'providers.js']) {
     const code = fs.readFileSync(path.join(root, 'assets', 'js', file), 'utf8');
     vm.runInContext(code, sandbox, { filename: file });
   }
@@ -264,8 +264,8 @@ test('o schema de verificação exige os campos usados pela auditoria', () => {
 
 /* ------------------------------------------- degradações automáticas da API */
 
-function fakeStore() {
-  return { state: NB.config.defaults(), outlets: ['g1.globo.com'] };
+function fakeStore(provider = 'anthropic') {
+  return { state: Object.assign(NB.config.defaults(), { provider }), outlets: ['g1.globo.com'] };
 }
 
 function okResponse(text = '{"ok":true}') {
@@ -288,7 +288,7 @@ function http400(message) {
 test('_callSchema repete sem output_config quando a conta recusa o schema', async () => {
   const bodies = [];
   const api = {
-    create: async (cfg, body) => {
+    messages: async (cfg, body) => {
       bodies.push(body);
       if (bodies.length === 1) {
         throw http400('Esta conta/modelo não aceitou structured outputs: feature indisponível');
@@ -297,14 +297,15 @@ test('_callSchema repete sem output_config quando a conta recusa o schema', asyn
     },
   };
   const pipeline = new NB.Pipeline({ store: fakeStore(), api });
-  const out = await pipeline._callSchema(
+  const out = await pipeline._callJson(
     {
       model: 'claude-opus-5-5',
       max_tokens: 10,
       messages: [{ role: 'user', content: 'oi' }],
       output_config: { format: { type: 'json_schema', schema: { type: 'object' } } },
     },
-    'teste'
+    'teste',
+    'anthropic'
   );
   assert.equal(bodies.length, 2);
   assert.ok(bodies[0].output_config);
@@ -315,21 +316,22 @@ test('_callSchema repete sem output_config quando a conta recusa o schema', asyn
 test('_callSchema repete sem thinking quando o modelo recusa raciocínio adaptativo', async () => {
   const bodies = [];
   const api = {
-    create: async (cfg, body) => {
+    messages: async (cfg, body) => {
       bodies.push(body);
       if (bodies.length === 1) throw http400('thinking adaptativo não é suportado por este modelo');
       return okResponse();
     },
   };
   const pipeline = new NB.Pipeline({ store: fakeStore(), api });
-  await pipeline._callSchema(
+  await pipeline._callJson(
     {
       model: 'claude-haiku-4-5',
       max_tokens: 10,
       messages: [{ role: 'user', content: 'oi' }],
       thinking: { type: 'adaptive' },
     },
-    'teste'
+    'teste',
+    'anthropic'
   );
   assert.equal(bodies.length, 2);
   assert.ok(bodies[0].thinking);
@@ -339,14 +341,14 @@ test('_callSchema repete sem thinking quando o modelo recusa raciocínio adaptat
 test('_callSchema cai para a busca básica quando a versão nova é recusada', async () => {
   const bodies = [];
   const api = {
-    create: async (cfg, body) => {
+    messages: async (cfg, body) => {
       bodies.push(body);
       if (bodies.length === 1) throw http400('web_search_20260209 não é suportado por este modelo');
       return okResponse();
     },
   };
   const pipeline = new NB.Pipeline({ store: fakeStore(), api });
-  await pipeline._callSchema(
+  await pipeline._callJson(
     {
       model: 'claude-haiku-4-5',
       max_tokens: 10,
@@ -360,7 +362,8 @@ test('_callSchema cai para a busca básica quando a versão nova é recusada', a
         },
       ],
     },
-    'teste'
+    'teste',
+    'anthropic'
   );
   assert.equal(bodies.length, 2);
   assert.equal(bodies[1].tools[0].type, 'web_search_20250305');
@@ -368,10 +371,10 @@ test('_callSchema cai para a busca básica quando a versão nova é recusada', a
   assert.deepEqual(Array.from(bodies[1].tools[0].allowed_domains), ['g1.globo.com']);
 });
 
-test('_call continua um turno pausado sem gastar tentativa', async () => {
+test('_request continua um turno pausado sem gastar tentativa', async () => {
   const bodies = [];
   const api = {
-    create: async (cfg, body) => {
+    messages: async (cfg, body) => {
       bodies.push(body);
       if (bodies.length < 3) {
         return {
@@ -389,9 +392,10 @@ test('_call continua um turno pausado sem gastar tentativa', async () => {
     },
   };
   const pipeline = new NB.Pipeline({ store: fakeStore(), api });
-  const out = await pipeline._call(
+  const out = await pipeline._request(
     { model: 'claude-opus-5-5', max_tokens: 10, messages: [{ role: 'user', content: 'oi' }] },
-    'teste'
+    'teste',
+    'anthropic'
   );
   assert.equal(bodies.length, 3);
   assert.equal(out.stop_reason, 'end_turn');

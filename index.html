@@ -156,12 +156,23 @@
     <div class="settings-body">
 
       <section class="fieldset">
-        <h3>Conexão com a API</h3>
-        <p class="help">O modo proxy mantém a chave no servidor (<code>server.js</code>) e evita expor segredo no navegador. O modo direto é só para teste local.</p>
+        <h3>Provedor e conexão</h3>
+        <p class="help">
+          O <b>OpenRouter</b> dá acesso a vários modelos com uma chave só, incluindo os Claude. A opção
+          <b>Anthropic (direto)</b> usa a Messages API nativa. Em qualquer um dos dois, o modo proxy mantém a
+          chave no servidor — é o recomendado.
+        </p>
 
         <div class="row">
           <label class="field">
-            <span>Modo</span>
+            <span>Provedor</span>
+            <select id="f-provider">
+              <option value="openrouter">OpenRouter</option>
+              <option value="anthropic">Anthropic (direto)</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Modo de conexão</span>
             <select id="f-apiMode">
               <option value="proxy">Proxy local (recomendado)</option>
               <option value="direct">Direto do navegador (teste)</option>
@@ -173,56 +184,69 @@
           </label>
         </div>
 
+        <div class="row">
+          <label class="field field-wide">
+            <span>Token do proxy (opcional)</span>
+            <input id="f-proxyToken" type="password" placeholder="só se você definiu PROXY_TOKEN" autocomplete="off" spellcheck="false">
+          </label>
+        </div>
+
+        <div class="row" id="rowOpenrouterKey" hidden>
+          <label class="field field-wide">
+            <span>Chave do OpenRouter (fica no navegador)</span>
+            <input id="f-openrouterKey" type="password" placeholder="sk-or-v1-..." autocomplete="off" spellcheck="false">
+          </label>
+        </div>
+
         <div class="row" id="rowApiKey" hidden>
           <label class="field field-wide">
-            <span>Chave da API (fica no navegador)</span>
+            <span>Chave da Anthropic (fica no navegador)</span>
             <input id="f-apiKey" type="password" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
           </label>
         </div>
 
         <div class="row">
           <label class="field">
-            <span>Token do proxy (opcional)</span>
-            <input id="f-proxyToken" type="password" placeholder="só se você definiu PROXY_TOKEN" autocomplete="off" spellcheck="false">
-          </label>
-          <label class="field">
             <span>Modelo da checagem</span>
-            <select id="f-model"></select>
+            <input id="f-model" list="modelOptions" spellcheck="false" placeholder="anthropic/claude-opus-5.5">
           </label>
           <label class="field">
             <span>Modelo da triagem</span>
-            <select id="f-triageModel"></select>
+            <input id="f-triageModel" list="modelOptions" spellcheck="false" placeholder="vazio = mesmo da checagem">
+          </label>
+          <label class="field" id="judgeField">
+            <span>Modelo do julgamento</span>
+            <input id="f-judgeModel" list="modelOptions" spellcheck="false" placeholder="vazio = mesmo da checagem">
           </label>
         </div>
-
-        <div class="row">
-          <label class="field">
-            <span>Header beta (opcional)</span>
-            <input id="f-betaHeader" type="text" placeholder="ex.: structured-outputs-2025-11-13" spellcheck="false">
-          </label>
-          <label class="field">
-            <span>Raciocínio</span>
-            <select id="f-thinkingVerify">
-              <option value="adaptive">adaptativo na checagem</option>
-              <option value="none">desligado</option>
-            </select>
-          </label>
-        </div>
+        <datalist id="modelOptions"></datalist>
 
         <div class="row row-actions">
           <button class="btn btn-tiny" id="btnTestApi" type="button">testar conexão</button>
+          <button class="btn btn-tiny" id="btnListModels" type="button">listar modelos do OpenRouter</button>
           <span class="test-out" id="testApiOut"></span>
         </div>
       </section>
 
       <section class="fieldset">
         <h3>Busca restrita</h3>
-        <p class="help">A lista vira o parâmetro <code>allowed_domains</code>. Domínio puro, sem <code>https://</code>. Subdomínios entram automaticamente; subcaminhos são aceitos.</p>
+        <p class="help" id="searchHelp">
+          A lista vira o filtro de domínios da busca: <code>allowed_domains</code>. Domínio puro, sem
+          <code>https://</code>. Subdomínios entram automaticamente; subcaminhos são aceitos.
+        </p>
 
         <div class="row">
-          <label class="field">
+          <label class="field" id="rowSearchEngine">
+            <span>Motor de busca</span>
+            <select id="f-searchEngine"></select>
+          </label>
+          <label class="field" id="rowSearchTool">
             <span>Versão da ferramenta</span>
             <select id="f-searchTool"></select>
+          </label>
+          <label class="field" id="rowMaxResults">
+            <span>Resultados por busca</span>
+            <input id="f-maxResults" type="number" min="1" max="10" step="1">
           </label>
           <label class="field">
             <span>Máximo de buscas por afirmação</span>
@@ -239,12 +263,29 @@
         <p class="help help-warn" id="domainWarn" hidden></p>
 
         <details class="advanced">
-          <summary>Localização usada na busca</summary>
+          <summary>Ajustes avançados</summary>
           <div class="row">
             <label class="field"><span>Cidade</span><input id="f-locCity" type="text"></label>
             <label class="field"><span>Estado</span><input id="f-locRegion" type="text"></label>
             <label class="field"><span>País</span><input id="f-locCountry" type="text" maxlength="2"></label>
             <label class="field"><span>Fuso</span><input id="f-locTz" type="text"></label>
+          </div>
+          <div class="row">
+            <label class="field" id="rowBetaHeader">
+              <span>Header beta (Anthropic)</span>
+              <input id="f-betaHeader" type="text" placeholder="ex.: structured-outputs-2025-11-13" spellcheck="false">
+            </label>
+            <label class="field">
+              <span>Raciocínio</span>
+              <select id="f-thinkingVerify">
+                <option value="adaptive">adaptativo na checagem</option>
+                <option value="none">desligado</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Identificação no OpenRouter</span>
+              <input id="f-orReferer" type="text" placeholder="https://seu-site (opcional)" spellcheck="false">
+            </label>
           </div>
         </details>
       </section>
@@ -327,12 +368,15 @@
         <h3>Como isto funciona — e o que não faz</h3>
         <p class="help">
           A fala é transcrita pela Web Speech API do Chrome (o áudio é processado pelos servidores do Google).
-          A cada janela, o Claude separa afirmações checáveis de opiniões, previsões e promessas. Só as checáveis
-          seguem para a busca, restrita por <code>allowed_domains</code> aos veículos da sua lista.
+          A cada janela, o modelo separa afirmações checáveis de opiniões, previsões e promessas. Só as checáveis
+          seguem para a busca, restrita aos veículos da sua lista (<code>allowed_domains</code> no OpenRouter e
+          na Anthropic).
         </p>
         <p class="help">
-          A auditoria confere se cada URL citada apareceu de fato nos resultados da busca. Se nenhuma fonte passar,
-          o veredito é rebaixado para <b>não verificado</b> — o sistema não afirma verdade nem mentira sem fonte.
+          A auditoria confere se cada URL citada apareceu de fato nos resultados da busca. Com OpenRouter isso usa
+          as anotações <code>url_citation</code>: primeiro o modelo busca, depois julga a afirmação com uma lista
+          fechada de fontes. Se nenhuma fonte passar, o veredito é rebaixado para <b>não verificado</b> — o sistema
+          não afirma verdade nem mentira sem fonte.
         </p>
         <p class="help help-warn">
           Isto é uma ferramenta de apoio, não uma checagem publicável. Há atraso de segundos entre a fala e o veredito,
@@ -356,9 +400,10 @@
 <script src="assets/js/config.js"></script>
 <script src="assets/js/outlets.js"></script>
 <script src="assets/js/store.js"></script>
-<script src="assets/js/anthropic.js"></script>
+<script src="assets/js/client.js"></script>
 <script src="assets/js/audit.js"></script>
 <script src="assets/js/pipeline.js"></script>
+<script src="assets/js/providers.js"></script>
 <script src="assets/js/speech.js"></script>
 <script src="assets/js/pip.js"></script>
 <script src="assets/js/demo.js"></script>

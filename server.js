@@ -3,13 +3,13 @@
  *
  * Servidor local sem dependências:
  *   - serve a página (index.html, assets/)
- *   - faz proxy de POST /api/messages para a API da Anthropic, mantendo a chave
- *     no processo do servidor em vez de expô-la no navegador
+ *   - faz proxy das chamadas para o OpenRouter e para a Anthropic, mantendo as
+ *     chaves no processo do servidor em vez de expô-las no navegador
  *
  * Node 18+ (usa fetch global).
  *
  * Uso:
- *   cp .env.example .env      # e preencha ANTHROPIC_API_KEY
+ *   cp .env.example .env      # e preencha OPENROUTER_API_KEY
  *   npm start                 # http://localhost:8787
  */
 
@@ -46,6 +46,10 @@ loadDotEnv(path.join(__dirname, '.env'));
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || '0.0.0.0';
 const API_KEY = process.env.ANTHROPIC_API_KEY || '';
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
+const OPENROUTER_REFERER = process.env.OPENROUTER_REFERER || '';
+const OPENROUTER_TITLE = process.env.OPENROUTER_TITLE || 'naubert-bot';
+const OPENROUTER_BASE = process.env.OPENROUTER_BASE || 'https://openrouter.ai/api/v1';
 const PROXY_TOKEN = process.env.PROXY_TOKEN || '';
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
   .split(',')
@@ -246,6 +250,116 @@ async function forwardToAnthropic(req, res, pathname) {
   }
 }
 
+/* ------------------------------------------------------------- openrouter */
+
+const modelCache = { at: 0, data: null };
+
+function openRouterHeaders(origin) {
+  const headers = {
+    authorization: 'Bearer ' + OPENROUTER_API_KEY,
+    'content-type': 'application/json',
+  };
+  const referer = OPENROUTER_REFERER || origin || '';
+  if (referer) headers['http-referer'] = referer;
+  if (OPENROUTER_TITLE) headers['x-title'] = OPENROUTER_TITLE;
+  return headers;
+}
+
+async function forwardToOpenRouter(req, res) {
+  if (!OPENROUTER_API_KEY) {
+    apiError(
+      res,
+      500,
+      'configuration_error',
+      'OPENROUTER_API_KEY não configurada no servidor. Copie .env.example para .env, preencha a chave e reinicie.'
+    );
+    return;
+  }
+
+  let body;
+  try {
+    body = await readBody(req);
+  } catch (err) {
+    apiError(res, err.status || 400, 'invalid_request_error', err.message);
+    return;
+  }
+  if (!body.trim()) {
+    apiError(res, 400, 'invalid_request_error', 'Corpo vazio.');
+    return;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT);
+  const origin = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : '');
+
+  try {
+    const upstream = await fetch(OPENROUTER_BASE + '/chat/completions', {
+      method: 'POST',
+      headers: openRouterHeaders(origin),
+      body: body,
+      signal: controller.signal,
+    });
+    const text = await upstream.text();
+    res.writeHead(upstream.status, {
+      'content-type': upstream.headers.get('content-type') || 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+    });
+    res.end(text);
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      apiError(res, 504, 'timeout_error', 'O OpenRouter não respondeu a tempo (' + UPSTREAM_TIMEOUT / 1000 + 's).');
+      return;
+    }
+    apiError(res, 502, 'upstream_error', 'Falha ao falar com o OpenRouter: ' + err.message);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Catálogo de modelos, resumido. O JSON completo do OpenRouter tem vários MB;
+ * aqui devolvemos só o necessário para o seletor e já filtramos por busca.
+ */
+async function listOpenRouterModels(req, res, url) {
+  const q = (url.searchParams.get('q') || '').toLowerCase().trim();
+  const limit = Math.min(Number(url.searchParams.get('limit') || 40), 100);
+
+  try {
+    if (!modelCache.data || Date.now() - modelCache.at > 10 * 60 * 1000) {
+      const upstream = await fetch(OPENROUTER_BASE + '/models', {
+        headers: OPENROUTER_API_KEY ? { authorization: 'Bearer ' + OPENROUTER_API_KEY } : {},
+      });
+      if (!upstream.ok) throw new Error('HTTP ' + upstream.status);
+      const payload = await upstream.json();
+      modelCache.data = payload.data || [];
+      modelCache.at = Date.now();
+    }
+
+    let list = modelCache.data.slice().sort((a, b) => (b.created || 0) - (a.created || 0));
+    if (q) {
+      list = list.filter((m) => {
+        return (m.id || '').toLowerCase().includes(q) || (m.name || '').toLowerCase().includes(q);
+      });
+    }
+
+    const out = list
+      .slice(0, limit)
+      .map((m) => ({
+        id: m.id,
+        name: m.name,
+        context: m.context_length || null,
+        prompt: m.pricing && Number(m.pricing.prompt),
+        completion: m.pricing && Number(m.pricing.completion),
+        tools: Array.isArray(m.supported_parameters) && m.supported_parameters.includes('tools'),
+        structured: Array.isArray(m.supported_parameters) && m.supported_parameters.includes('structured_outputs'),
+      }));
+
+    json(res, 200, { total: list.length, models: out });
+  } catch (err) {
+    apiError(res, 502, 'upstream_error', 'Não foi possível listar os modelos do OpenRouter: ' + err.message);
+  }
+}
+
 /* ----------------------------------------------------------------- router */
 
 const server = http.createServer(async (req, res) => {
@@ -274,8 +388,13 @@ const server = http.createServer(async (req, res) => {
       json(res, 200, {
         ok: true,
         service: 'naubert-bot',
-        keyConfigured: !!API_KEY,
-        keyMasked: maskKey(API_KEY),
+        // compatibilidade com a versão anterior (só Anthropic)
+        keyConfigured: !!OPENROUTER_API_KEY || !!API_KEY,
+        keyMasked: maskKey(OPENROUTER_API_KEY || API_KEY),
+        providers: {
+          openrouter: { keyConfigured: !!OPENROUTER_API_KEY, keyMasked: maskKey(OPENROUTER_API_KEY) },
+          anthropic: { keyConfigured: !!API_KEY, keyMasked: maskKey(API_KEY) },
+        },
         tokenRequired: !!PROXY_TOKEN,
         node: process.version,
       });
@@ -288,6 +407,32 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       await forwardToAnthropic(req, res, '/v1/models');
+      return;
+    }
+
+    if (pathname === '/api/openrouter/models') {
+      if (!checkToken(req)) {
+        apiError(res, 401, 'authentication_error', 'Token do proxy inválido.');
+        return;
+      }
+      await listOpenRouterModels(req, res, url);
+      return;
+    }
+
+    if (pathname === '/api/openrouter/chat') {
+      if (req.method !== 'POST') {
+        apiError(res, 405, 'invalid_request_error', 'Use POST.');
+        return;
+      }
+      if (!checkToken(req)) {
+        apiError(res, 401, 'authentication_error', 'Token do proxy inválido. Preencha PROXY_TOKEN nas configurações da página.');
+        return;
+      }
+      if (rateLimited(ip)) {
+        apiError(res, 429, 'rate_limit_error', 'Muitas requisições para o proxy local. Reduza a concorrência nas configurações.');
+        return;
+      }
+      await forwardToOpenRouter(req, res);
       return;
     }
 
@@ -332,9 +477,10 @@ server.listen(PORT, HOST, () => {
   console.log('  naubert-bot · checagem ao vivo');
   console.log('  http://localhost:' + PORT);
   console.log('');
-  console.log('  chave da API: ' + (API_KEY ? maskKey(API_KEY) : 'AUSENTE — preencha .env'));
-  if (!API_KEY) {
-    console.log('  → cp .env.example .env  e coloque sua ANTHROPIC_API_KEY');
+  console.log('  OpenRouter:  ' + (OPENROUTER_API_KEY ? maskKey(OPENROUTER_API_KEY) : 'AUSENTE'));
+  console.log('  Anthropic:   ' + (API_KEY ? maskKey(API_KEY) : 'ausente (opcional)'));
+  if (!OPENROUTER_API_KEY && !API_KEY) {
+    console.log('  → cp .env.example .env  e coloque OPENROUTER_API_KEY (recomendado)');
   }
   console.log('  veículos permitidos: definidos na própria página (Configurações)');
   console.log('');

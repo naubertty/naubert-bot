@@ -133,14 +133,15 @@
    *
    * @param {object} opts
    * @param {Array<{veiculo?:string,titulo?:string,url?:string}>} opts.sources
-   * @param {object} opts.response   resposta crua da Messages API
+   * @param {object} [opts.response] resposta crua da Messages API (Anthropic)
+   * @param {object} [opts.evidence] evidência já extraída (OpenRouter: anotações)
    * @param {string[]} opts.allowed  lista de domínios permitidos
    * @returns {{items:Array, trusted:number, total:number}}
    */
   function auditSources(opts) {
     var sources = opts.sources || [];
     var allowed = opts.allowed || [];
-    var ev = collectEvidence((opts.response && opts.response.content) || []);
+    var ev = opts.evidence || collectEvidence((opts.response && opts.response.content) || []);
 
     var seenSet = Object.create(null);
     var titleSet = Object.create(null);
@@ -210,7 +211,8 @@
       trusted: trusted,
       total: items.length,
       evidence: ev,
-      searchRequests: searchRequests(opts.response && opts.response.usage)
+      // evidência pré-extraída (OpenRouter) já traz a contagem de buscas
+      searchRequests: ev.searchRequests || searchRequests(opts.response && opts.response.usage)
     };
   }
 

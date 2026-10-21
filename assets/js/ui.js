@@ -118,8 +118,8 @@
       settingsForm: $('settingsForm')
     };
 
-    popupulateModelSelects();
-    popupulateSearchSelect();
+    populateDatalist(store.state.provider);
+    populateSearchSelects();
     buildPresets();
 
     setInterval(function () {
@@ -133,26 +133,46 @@
     bindSettingsChrome();
   };
 
-  function popupulateModelSelects() {
-    var main = $('f-model');
-    var triage = $('f-triageModel');
-    if (!main || !triage) return;
-    main.innerHTML = NB.config.MODELS.map(function (m) {
-      return '<option value="' + esc(m.id) + '">' + esc(m.label + ' · ' + m.note) + '</option>';
-    }).join('');
-    triage.innerHTML =
-      '<option value="">mesmo modelo da checagem</option>' +
-      NB.config.MODELS.map(function (m) {
-        return '<option value="' + esc(m.id) + '">' + esc(m.label) + '</option>';
-      }).join('');
+  function populateDatalist(provider) {
+    var dl = $('modelOptions');
+    if (!dl) return;
+    dl.innerHTML = NB.config
+      .modelPresets(provider)
+      .map(function (m) {
+        return '<option value="' + esc(m.id) + '">' + esc(m.label + ' · ' + m.note) + '</option>';
+      })
+      .join('');
   }
 
-  function popupulateSearchSelect() {
-    var sel = $('f-searchTool');
-    if (!sel) return;
-    sel.innerHTML = NB.config.SEARCH_TOOLS.map(function (t) {
-      return '<option value="' + esc(t.id) + '">' + esc(t.label) + '</option>';
-    }).join('');
+  /** Preenche o datalist com o catálogo real vindo do OpenRouter. */
+  UI.setModelList = function (models) {
+    var dl = $('modelOptions');
+    if (!dl) return;
+    dl.innerHTML = (models || [])
+      .map(function (m) {
+        var price = '';
+        if (isFinite(m.prompt) && isFinite(m.completion) && m.prompt >= 0) {
+          price =
+            ' · US$ ' + (m.prompt * 1e6).toFixed(2) + ' / ' + (m.completion * 1e6).toFixed(2) + ' por milhão';
+        }
+        return '<option value="' + esc(m.id) + '">' + esc((m.name || m.id) + price) + '</option>';
+      })
+      .join('');
+  };
+
+  function populateSearchSelects() {
+    var engine = $('f-searchEngine');
+    if (engine) {
+      engine.innerHTML = NB.config.SEARCH_ENGINES.map(function (t) {
+        return '<option value="' + esc(t.id) + '">' + esc(t.label) + '</option>';
+      }).join('');
+    }
+    var tool = $('f-searchTool');
+    if (tool) {
+      tool.innerHTML = NB.config.SEARCH_TOOLS.map(function (t) {
+        return '<option value="' + esc(t.id) + '">' + esc(t.label) + '</option>';
+      }).join('');
+    }
   }
 
   function buildPresets() {
@@ -651,16 +671,22 @@
 
   UI.fillSettings = function () {
     var s = store.state;
+    $('f-provider').value = s.provider;
     $('f-apiMode').value = s.apiMode;
     $('f-proxyBase').value = s.proxyBase || '';
-    $('f-apiKey').value = s.apiKey || '';
     $('f-proxyToken').value = s.proxyToken || '';
-    $('f-model').value = s.model;
+    $('f-apiKey').value = s.apiKey || '';
+    $('f-openrouterKey').value = s.openrouterKey || '';
+    $('f-model').value = s.model || '';
     $('f-triageModel').value = s.triageModel || '';
+    $('f-judgeModel').value = s.judgeModel || '';
     $('f-betaHeader').value = s.betaHeader || '';
     $('f-thinkingVerify').value = s.thinkingVerify || 'none';
+    $('f-searchEngine').value = s.searchEngine || 'auto';
     $('f-searchTool').value = s.searchTool;
+    $('f-maxResults').value = s.maxResults || 5;
     $('f-maxUses').value = s.maxUses;
+    $('f-orReferer').value = s.orReferer || '';
     $('f-domains').value = NB.outlets.toText(store.outlets);
     $('f-locCity').value = s.userLocation.city || '';
     $('f-locRegion').value = s.userLocation.region || '';
@@ -676,12 +702,32 @@
     $('f-duotoneStrength').value = Math.round((s.duotoneStrength || 0.85) * 100);
     $('f-duotoneHold').value = s.duotoneHold;
     $('f-autoDuotone').checked = !!s.autoDuotone;
+    populateDatalist(s.provider);
     syncSettingsChrome();
     updateDomainCount();
   };
 
   function syncSettingsChrome() {
-    $('rowApiKey').hidden = $('f-apiMode').value !== 'direct';
+    var provider = $('f-provider').value;
+    var direct = $('f-apiMode').value === 'direct';
+    var isOR = provider === 'openrouter';
+
+    $('rowApiKey').hidden = !(direct && !isOR);
+    $('rowOpenrouterKey').hidden = !(direct && isOR);
+    $('rowSearchEngine').hidden = !isOR;
+    $('rowSearchTool').hidden = isOR;
+    $('rowMaxResults').hidden = !isOR;
+    $('judgeField').hidden = !isOR;
+    $('rowBetaHeader').hidden = isOR;
+    $('btnListModels').hidden = !isOR;
+
+    $('searchHelp').innerHTML = isOR
+      ? 'No OpenRouter a lista vira <code>allowed_domains</code> da ferramenta de busca. O filtro funciona em ' +
+        'Exa, Parallel, Perplexity, Firecrawl e na busca nativa de Anthropic e OpenAI. Com busca nativa do ' +
+        'Google o filtro não é aplicado — o sistema percebe e marca as fontes fora da lista.'
+      : 'Na Anthropic a lista vira <code>allowed_domains</code> da web_search. Domínio puro, sem ' +
+        '<code>https://</code>; subdomínios entram automaticamente.';
+
     $('chunkCharsVal').textContent = $('f-chunkChars').value;
     $('chunkSecondsVal').textContent = $('f-chunkSeconds').value;
     $('duotoneVal').textContent = $('f-duotoneStrength').value + '%';
@@ -693,9 +739,24 @@
       $(id).addEventListener('input', syncSettingsChrome);
     });
     $('f-apiMode').addEventListener('change', syncSettingsChrome);
-    $('f-searchTool').addEventListener('change', function () {
-      var hint = NB.config.SEARCH_TOOLS.filter(function (t) { return t.id === this.value; }.bind(this))[0];
-      if (hint) UI.log('info', 'ferramenta de busca: ' + hint.note);
+
+    $('f-provider').addEventListener('change', function () {
+      var provider = this.value;
+      populateDatalist(provider);
+      var current = $('f-model').value.trim();
+      var looksOpenRouter = current.indexOf('/') !== -1;
+      if (!current || (provider === 'openrouter') !== looksOpenRouter) {
+        $('f-model').value = NB.providers.get({ provider: provider }).defaultModel;
+        $('f-triageModel').value = provider === 'openrouter' ? 'anthropic/claude-haiku-5.5' : '';
+      }
+      syncSettingsChrome();
+    });
+
+    $('f-searchEngine').addEventListener('change', function () {
+      var chosen = NB.config.SEARCH_ENGINES.filter(function (t) {
+        return t.id === this.value;
+      }.bind(this))[0];
+      if (chosen) UI.log('info', 'motor de busca: ' + chosen.note);
     });
   }
 
@@ -708,16 +769,32 @@
     var country = ($('f-locCountry').value || '').trim().toUpperCase();
     if (country && country.length !== 2) throw new Error('O país deve ser o código de duas letras (BR, PT, US).');
 
+    var provider = $('f-provider').value;
+    var model = $('f-model').value.trim();
+    if (!model) throw new Error('Informe o modelo.');
+    if (provider === 'openrouter' && model.indexOf('/') === -1) {
+      throw new Error('No OpenRouter o modelo tem o formato "autor/nome", por exemplo anthropic/claude-opus-5.5.');
+    }
+    if (provider === 'anthropic' && model.indexOf('/') !== -1) {
+      throw new Error('Na Anthropic o modelo não leva barra: use claude-opus-5-5, por exemplo.');
+    }
+
     var patch = {
+      provider: provider,
       apiMode: $('f-apiMode').value,
       proxyBase: $('f-proxyBase').value.trim(),
-      apiKey: $('f-apiKey').value.trim(),
       proxyToken: $('f-proxyToken').value.trim(),
-      model: $('f-model').value,
-      triageModel: $('f-triageModel').value,
+      apiKey: $('f-apiKey').value.trim(),
+      openrouterKey: $('f-openrouterKey').value.trim(),
+      orReferer: $('f-orReferer').value.trim(),
+      model: model,
+      triageModel: $('f-triageModel').value.trim(),
+      judgeModel: $('f-judgeModel').value.trim(),
       betaHeader: $('f-betaHeader').value.trim(),
       thinkingVerify: $('f-thinkingVerify').value,
+      searchEngine: $('f-searchEngine').value,
       searchTool: $('f-searchTool').value,
+      maxResults: Number($('f-maxResults').value) || 5,
       maxUses: Number($('f-maxUses').value) || 4,
       chunkChars: Number($('f-chunkChars').value),
       chunkSeconds: Number($('f-chunkSeconds').value),
@@ -761,8 +838,9 @@
     md.push('# Checagem ao vivo — registro');
     md.push('');
     md.push('- Gerado em: ' + new Date().toLocaleString('pt-BR'));
+    md.push('- Provedor: ' + (meta.provider || 'anthropic'));
     md.push('- Modelo: ' + meta.model);
-    md.push('- Ferramenta de busca: ' + meta.searchTool);
+    md.push('- Busca: ' + (meta.search || meta.searchTool));
     md.push('- Veículos permitidos: ' + meta.domains.length);
     md.push('- Aviso: checagem assistida por modelo de linguagem. O atraso entre a fala e o veredito está registrado em cada item. Confira a fonte antes de publicar.');
     if (rows.some(function (r) { return r.simulacao; })) {

@@ -1,8 +1,8 @@
 {
   "name": "naubert-bot",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
-  "description": "Checagem de fatos ao vivo de debates: transcrição no navegador, triagem de afirmações e verificação com busca restrita a veículos de imprensa.",
+  "description": "Checagem de fatos ao vivo de debates: transcrição no navegador, triagem de afirmações e verificação com busca restrita a veículos de imprensa (OpenRouter ou Anthropic).",
   "type": "commonjs",
   "engines": {
     "node": ">=18"
@@ -10,13 +10,14 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test test/*.test.mjs",
-    "check": "node --check server.js && node --check assets/js/anthropic.js && node --check assets/js/app.js && node --check assets/js/audit.js && node --check assets/js/config.js && node --check assets/js/demo.js && node --check assets/js/outlets.js && node --check assets/js/pip.js && node --check assets/js/pipeline.js && node --check assets/js/speech.js && node --check assets/js/store.js && node --check assets/js/ui.js && node --test test/*.test.mjs"
+    "check": "node --check server.js && node --check assets/js/app.js && node --check assets/js/audit.js && node --check assets/js/client.js && node --check assets/js/config.js && node --check assets/js/demo.js && node --check assets/js/outlets.js && node --check assets/js/pip.js && node --check assets/js/pipeline.js && node --check assets/js/providers.js && node --check assets/js/speech.js && node --check assets/js/store.js && node --check assets/js/ui.js && node --test test/*.test.mjs"
   },
   "keywords": [
     "fact-checking",
     "debate",
     "web-speech-api",
     "claude",
+    "openrouter",
     "anthropic",
     "jornalismo"
   ],
