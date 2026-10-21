@@ -73,12 +73,11 @@
     '- Se a afirmação for previsão ou promessa, verifique apenas a parte factual que as fontes sustentam.',
     '',
     'Significado dos vereditos:',
-    '   VERDADEIRO      -> o dado confere com a fonte, no período e no recorte citados.',
-    '   FALSO           -> a fonte contradiz o dado, ou o dado não existe.',
-    '   ENGANOSO        -> há um núcleo verdadeiro, mas o número, o recorte ou a conclusão distorcem a fonte.',
-    '   FORA_DE_CONTEXT -> o dado existe, mas é de outro período, local, população ou indicador.',
-    '   DESATUALIZADO   -> era verdade e foi revisado ou superado.',
-    '   NAO_VERIFICADO  -> as fontes da lista não permitem concluir.',
+    '   VERDADEIRO                  -> o dado confere com a fonte, no período e no recorte citados.',
+    '   SUBSTANCIALMENTE_VERDADEIRO -> o essencial confere, com imprecisão em detalhe secundário.',
+    '   ENGANOSO                    -> o dado existe, mas o número, o recorte, o período ou a conclusão distorcem a fonte.',
+    '   FALSO                       -> a fonte contradiz o dado, ou o dado não existe.',
+    '   NAO_VERIFICADO              -> as fontes da lista não permitem concluir.',
     '',
     'Escreva em português do Brasil, direto, sem jargão.'
   ].join('\n');

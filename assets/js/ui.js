@@ -64,6 +64,20 @@
     return NB.config.VERDICTS[v] || NB.config.VERDICTS.NAO_VERIFICADO;
   }
 
+  /** Selo do veredito: ícone + rótulo, no estilo dos cartões do InTruth. */
+  function verdictBadge(v) {
+    var meta = verdictMeta(v);
+    return '<span class="vbadge"><i class="vi">' + esc(meta.icon || '·') + '</i>' + esc(meta.label) + '</span>';
+  }
+
+  /** Grupos dos chips de filtro. As duas formas de verdade caem juntas. */
+  function filterGroup(v) {
+    if (v === 'VERDADEIRO' || v === 'SUBSTANCIALMENTE_VERDADEIRO') return 'true';
+    if (v === 'FALSO') return 'false';
+    if (v === 'ENGANOSO') return 'misleading';
+    return 'unknown';
+  }
+
   function toneOf(v) {
     return verdictMeta(v).tone;
   }
@@ -386,7 +400,7 @@
     el.flash.style.setProperty('--flash-tone', meta.cssVar);
     el.flash.innerHTML =
       '<div class="flash-top">' +
-        '<span class="flash-badge">' + esc(meta.label) + '</span>' +
+        '<span class="flash-badge"><i class="vi">' + esc(meta.icon || '·') + '</i>' + esc(meta.label) + '</span>' +
         '<span class="flash-theme">' + esc(result.tema || '') + (result.simulacao ? ' · simulação' : '') + '</span>' +
         '<span class="flash-conf">confiança ' + conf + '%</span>' +
       '</div>' +
@@ -490,7 +504,7 @@
     card.className = 'card is-pending';
     card.id = id;
     card.dataset.verdict = 'PENDENTE';
-    card.dataset.filter = 'outros';
+    card.dataset.filter = 'unknown';
     card.innerHTML =
       '<div class="card-head">' +
         '<span class="vbadge pending-dots">CHECANDO</span>' +
@@ -520,7 +534,7 @@
     var card = document.createElement('article');
     card.className = 'card';
     card.dataset.verdict = result.veredito;
-    card.dataset.filter = result.veredito === 'VERDADEIRO' || result.veredito === 'FALSO' ? result.veredito : 'outros';
+    card.dataset.filter = filterGroup(result.veredito);
     if (result.demo) card.dataset.demo = '1';
 
     var fontes = result.fontes || [];
@@ -559,7 +573,7 @@
 
     card.innerHTML =
       '<div class="card-head">' +
-        '<span class="vbadge">' + esc(meta.label) + '</span>' +
+        verdictBadge(result.veredito) +
         '<span class="card-theme">' + esc(result.tema || 'geral') + (result.simulacao ? ' · simulação' : '') + '</span>' +
         '<span class="card-time">' + hhmmss() + '</span>' +
       '</div>' +
@@ -573,7 +587,10 @@
       '<div class="card-foot">' +
         '<span>' + esc(auditLine) + '</span>' +
         '<span class="lat">· ' + esc(secs(result.latencia)) + '</span>' +
-        '<span>· ' + Math.round((result.confianca || 0) * 100) + '%</span>' +
+        '<span class="conf" title="confiança do modelo">' +
+          '<span class="conf-bar"><i style="width:' + Math.round((result.confianca || 0) * 100) + '%"></i></span>' +
+          Math.round((result.confianca || 0) * 100) + '%' +
+        '</span>' +
         '<button class="retry" type="button" data-retry="' + esc(result.id) + '">rechecar</button>' +
       '</div>' +
       (detailBits.length

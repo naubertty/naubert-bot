@@ -220,15 +220,22 @@ gastar uma busca, e é isso que torna o sistema mais lento que um “detector”
 
 ### Os vereditos
 
-| Veredito | Cor | Significado |
-|---|---|---|
-| **VERDADEIRO** | verde | o dado confere com a fonte, no período e no recorte citados |
-| **FALSO** | vermelho | a fonte contradiz o dado, ou o dado não existe |
-| **ENGANOSO** | âmbar | há um núcleo verdadeiro, mas o número ou a conclusão distorcem a fonte |
-| **FORA DE CONTEXTO** | roxo | o dado existe, mas é de outro período, local, população ou indicador |
-| **DESATUALIZADO** | azul | era verdade e foi revisado ou superado |
-| **NÃO VERIFICADO** | cinza | as fontes permitidas não permitem concluir |
-| **ERRO** | cinza | falha técnica; o cartão tem botão de rechecar |
+A escala é a do [InTruth](https://github.com/rpanigrahi222/intruth-factcheck), traduzida e com os mesmos
+cinco degraus. Cada cartão mostra o selo com ícone e a confiança em barra.
+
+| Veredito | Ícone | Cor | Equivalente no InTruth | Significado |
+|---|---|---|---|---|
+| **VERDADEIRO** | ✓ | verde | *TRUE* | o dado confere com a fonte, no período e no recorte citados |
+| **SUBSTANCIALMENTE VERDADEIRO** | ≈ | verde-claro | *SUBSTANTIALLY TRUE* | o essencial confere; algum detalhe (arredondamento, data, unidade) está impreciso |
+| **ENGANOSO** | ! | âmbar | *MISLEADING* | há um núcleo verdadeiro, mas o número, o recorte ou a conclusão distorcem a fonte |
+| **FALSO** | ✕ | vermelho | *FALSE* | a fonte contradiz o dado, ou o dado não existe |
+| **NÃO VERIFICADO** | ? | cinza | *UNVERIFIABLE* | as fontes permitidas não permitem concluir |
+| **ERRO** | · | cinza | — | falha técnica; o cartão tem botão de rechecar |
+
+Os vereditos antigos `FORA DE CONTEXTO` e `DESATUALIZADO` continuam sendo lidos — caem em **ENGANOSO**,
+porque nos dois casos o dado existe e a conclusão é que distorce. O duotone do vídeo segue a regra do
+projeto: verde para as duas formas de verdade, âmbar para enganoso, vermelho para falso; não verificado não
+pinta o vídeo.
 
 ---
 

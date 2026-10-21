@@ -352,3 +352,22 @@ migração versionada (`settingsVersion` em `store.js`): estado sem versão e co
 intocados é reescrito para o Gemini na primeira abertura; quem já tinha trocado o modelo à mão fica onde
 está. A migração roda uma vez e grava o resultado — sem isso, o usuário veria a tela antiga, com a faixa de
 crédito do OpenRouter, mesmo depois de atualizar.
+
+## 17. A escala de vereditos veio do InTruth
+
+O InTruth (extensão de Chrome para o mesmo problema) usa cinco rótulos: TRUE, SUBSTANTIALLY TRUE, FALSE,
+MISLEADING e UNVERIFIABLE. O conjunto é melhor que o anterior por um motivo prático: **separa "errado" de
+"certo com ressalva"**. Um debate quase nunca mente por inteiro; o caso comum é o número certo com a
+unidade trocada, ou o dado certo com o recorte errado. Antes, isso caía em ENGANOSO junto com distorções
+graves; agora tem degrau próprio.
+
+Decisões:
+
+1. **Nomes em português, chaves estáveis em caixa alta.** `SUBSTANCIALMENTE_VERDADEIRO` é o que vai no
+   schema e no `data-verdict`; o rótulo visível é "SUBSTANCIALMENTE VERDADEIRO".
+2. **`FORA_DE_CONTEXT` e `DESATUALIZADO` viraram `ENGANOSO`.** Nos dois, o dado existe e o que falha é a
+   conclusão — que é a definição de enganoso. Configuração/JSON antigos continuam funcionando por alias.
+3. **A auditoria não muda.** Qualquer veredito que afirme algo (as duas verdades, enganoso, falso) exige
+   fonte confirmada na busca; sem isso, rebaixa para NÃO VERIFICADO. O novo degrau não abriu exceção.
+4. **A cor continua binária no vídeo.** Verde para verdadeiro e substancialmente verdadeiro, âmbar para
+   enganoso e vermelho para falso. Não verificado não pinta o vídeo — ausência de cor é a mensagem.

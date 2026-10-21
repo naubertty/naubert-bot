@@ -17,6 +17,7 @@
   --accent: #7fe7c4;
 
   --true: #22c55e;
+  --mostly-true: #4ade80;
   --false: #ef4444;
   --misleading: #f59e0b;
   --context: #a855f7;
@@ -414,6 +415,7 @@ a { color: inherit; }
 
 .flash-top { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; }
 .flash-badge {
+  display: inline-flex; align-items: center; gap: 5px;
   font-size: 10px; font-weight: 800; letter-spacing: .14em;
   color: #05080a;
   background: var(--flash-tone);
@@ -599,6 +601,7 @@ a { color: inherit; }
 .chip.is-on { color: #06080b; background: var(--text); border-color: var(--text); font-weight: 600; }
 .swatch { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
 .swatch.false { background: var(--false); }
+.swatch.misleading { background: var(--misleading); }
 .swatch.true { background: var(--true); }
 
 .rail-list { flex: 1; overflow-y: auto; padding: 11px; display: flex; flex-direction: column; gap: 9px; }
@@ -629,20 +632,28 @@ a { color: inherit; }
 @keyframes cardIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 
 .card[data-verdict="VERDADEIRO"] { --card-tone: var(--true); }
+.card[data-verdict="SUBSTANCIALMENTE_VERDADEIRO"] { --card-tone: var(--mostly-true); }
 .card[data-verdict="FALSO"] { --card-tone: var(--false); }
 .card[data-verdict="ENGANOSO"] { --card-tone: var(--misleading); }
-.card[data-verdict="FORA_DE_CONTEXT"] { --card-tone: var(--context); }
-.card[data-verdict="DESATUALIZADO"] { --card-tone: var(--stale); }
+/* vereditos antigos, mantidos para cartões exportados/importados */
+.card[data-verdict="FORA_DE_CONTEXT"] { --card-tone: var(--misleading); }
+.card[data-verdict="DESATUALIZADO"] { --card-tone: var(--misleading); }
 .card[data-verdict="NAO_VERIFICADO"] { --card-tone: var(--unknown); }
 .card[data-verdict="ERRO"] { --card-tone: var(--unknown); }
 
 .card-head { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; flex-wrap: wrap; }
 .vbadge {
+  display: inline-flex; align-items: center; gap: 4px;
   font-size: 9px; font-weight: 800; letter-spacing: .11em;
   padding: 2.5px 6px; border-radius: 3px;
   color: var(--card-tone);
   background: color-mix(in srgb, var(--card-tone) 15%, transparent);
   border: 1px solid color-mix(in srgb, var(--card-tone) 42%, transparent);
+}
+/* ícone do veredito: ✓ ≈ ! ✕ ? — mesma escala do InTruth */
+.vbadge .vi, .flash-badge .vi {
+  font-style: normal; font-size: 10px; line-height: 1;
+  letter-spacing: 0; font-weight: 900;
 }
 .card-theme { font-size: 9.5px; color: var(--text-mute); text-transform: uppercase; letter-spacing: .1em; }
 .card-time { font-size: 9.5px; color: var(--text-mute); margin-left: auto; font-family: var(--mono); }
@@ -682,6 +693,12 @@ a { color: inherit; }
   flex-wrap: wrap;
 }
 .card-foot .lat { font-family: var(--mono); }
+.card-foot .conf { display: inline-flex; align-items: center; gap: 5px; }
+.conf-bar {
+  display: inline-block; width: 46px; height: 3px; border-radius: 2px;
+  background: rgba(255,255,255,.08); overflow: hidden;
+}
+.conf-bar i { display: block; height: 100%; background: var(--card-tone); border-radius: 2px; }
 .card-foot .retry {
   margin-left: auto; background: none; border: 0; color: var(--text-mute);
   font-size: 9.5px; cursor: pointer; padding: 2px 4px; border-radius: 3px;

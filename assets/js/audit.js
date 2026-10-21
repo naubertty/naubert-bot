@@ -234,7 +234,9 @@
    */
   function enforceSourceRule(verdict, audit) {
     var v = String(verdict || '').toUpperCase();
-    var needsSource = v === 'VERDADEIRO' || v === 'FALSO' || v === 'ENGANOSO' ||
+    var needsSource = v === 'VERDADEIRO' || v === 'SUBSTANCIALMENTE_VERDADEIRO' ||
+      v === 'FALSO' || v === 'ENGANOSO' ||
+      // nomes antigos, ainda aceitos por configurações salvas
       v === 'FORA_DE_CONTEXT' || v === 'DESATUALIZADO';
 
     if (!needsSource) {

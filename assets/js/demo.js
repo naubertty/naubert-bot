@@ -89,6 +89,31 @@
     },
     {
       type: 'claim',
+      line: 'A inflação fechou 2022 em cinco vírgula nove por cento, foi o que o IBGE divulgou.',
+      claim: {
+        texto: 'A inflação de 2022 foi de 5,9%, segundo o IBGE.',
+        falante: 'candidato B',
+        tipo: 'checavel',
+        tema: 'economia',
+        prioridade: 2
+      },
+      result: {
+        veredito: 'SUBSTANCIALMENTE_VERDADEIRO',
+        explicacao: 'O IPCA de 2022 fechou em 5,79%. O número arredondado para uma casa decimal é 5,8%, então o 5,9% citado erra por um décimo — o essencial (inflação perto de 6%, medida pelo IBGE) está correto.',
+        correcao: 'IPCA 2022: 5,79% (5,8% arredondado).',
+        confianca: 0.84,
+        fontes: [
+          src('IBGE', 'https://www.ibge.gov.br/', 'IPCA — variação acumulada em 2022'),
+          src('Valor', 'https://valor.globo.com/', 'IBGE confirma IPCA de 5,79% em 2022 (fonte simulada)')
+        ],
+        termos: 'IPCA 2022 inflação acumulada IBGE',
+        consultas: ['IPCA 2022 variação acumulada IBGE'],
+        buscas: 1,
+        latencia: 8100
+      }
+    },
+    {
+      type: 'claim',
       line: 'O salário mínimo brasileiro está congelado há oito anos, sem nenhum reajuste real.',
       claim: {
         texto: 'O salário mínimo está congelado há oito anos, sem nenhum reajuste.',

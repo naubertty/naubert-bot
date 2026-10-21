@@ -416,8 +416,33 @@ test('enforceSourceRule não rebaixa NAO_VERIFICADO', () => {
 test('normalizeVerdict traduz variações do modelo', () => {
   assert.equal(NB.pipelineUtils.normalizeVerdict('verdadeira'), 'VERDADEIRO');
   assert.equal(NB.pipelineUtils.normalizeVerdict('Falsa'), 'FALSO');
-  assert.equal(NB.pipelineUtils.normalizeVerdict('fora de contexto'), 'FORA_DE_CONTEXT');
+  assert.equal(NB.pipelineUtils.normalizeVerdict('fora de contexto'), 'ENGANOSO');
   assert.equal(NB.pipelineUtils.normalizeVerdict('inventado'), 'NAO_VERIFICADO');
+});
+
+test('a escala de vereditos é a do InTruth, em português', () => {
+  const V = NB.config.VERDICTS;
+  assert.deepEqual(Object.keys(V).sort(), [
+    'ENGANOSO', 'ERRO', 'FALSO', 'NAO_VERIFICADO', 'SUBSTANCIALMENTE_VERDADEIRO', 'VERDADEIRO',
+  ]);
+  assert.deepEqual(Array.from(NB.pipelineUtils.VERIFY_SCHEMA.properties.veredito.enum), [
+    'VERDADEIRO', 'SUBSTANCIALMENTE_VERDADEIRO', 'ENGANOSO', 'FALSO', 'NAO_VERIFICADO',
+  ]);
+  // traduções do inglês e variações comuns
+  assert.equal(NB.pipelineUtils.normalizeVerdict('SUBSTANTIALLY TRUE'), 'SUBSTANCIALMENTE_VERDADEIRO');
+  assert.equal(NB.pipelineUtils.normalizeVerdict('substantially_true'), 'SUBSTANCIALMENTE_VERDADEIRO');
+  assert.equal(NB.pipelineUtils.normalizeVerdict('MISLEADING'), 'ENGANOSO');
+  assert.equal(NB.pipelineUtils.normalizeVerdict('UNVERIFIABLE'), 'NAO_VERIFICADO');
+  assert.equal(NB.pipelineUtils.normalizeVerdict('DESATUALIZADO'), 'ENGANOSO');
+});
+
+test('as duas formas de verdade precisam de fonte confirmada', () => {
+  const empty = { items: [], trusted: 0, total: 1 };
+  assert.equal(NB.audit.enforceSourceRule('SUBSTANCIALMENTE_VERDADEIRO', empty).verdict, 'NAO_VERIFICADO');
+  assert.equal(NB.audit.enforceSourceRule('ENGANOSO', empty).verdict, 'NAO_VERIFICADO');
+  const ok = { items: [{ status: 'confirmada' }], trusted: 1, total: 1 };
+  assert.equal(NB.audit.enforceSourceRule('SUBSTANCIALMENTE_VERDADEIRO', ok).verdict, 'SUBSTANCIALMENTE_VERDADEIRO');
+  assert.equal(NB.audit.enforceSourceRule('SUBSTANCIALMENTE_VERDADEIRO', ok).downgraded, false);
 });
 
 test('dedupe por jaccard ignora paráfrase curta', () => {

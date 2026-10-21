@@ -108,52 +108,56 @@
 
   /* --------------------------------------------------------------- rótulos */
 
+  /* Os cinco vereditos seguem a escala do InTruth (TRUE / SUBSTANTIALLY TRUE /
+   * FALSE / MISLEADING / UNVERIFIABLE), traduzida e com o duotone do projeto:
+   * verde para as duas formas de verdade, âmbar para distorção, vermelho para
+   * mentira e cinza quando a busca não permite concluir. */
   var VERDICTS = {
     VERDADEIRO: {
       tone: 'true',
       label: 'VERDADEIRO',
+      icon: '✓',
       cssVar: '#22c55e',
       duotone: '#00e07a',
-      blurb: 'confirmado por fontes da lista'
+      blurb: 'o dado confere com a fonte, no período e no recorte citados'
     },
-    FALSO: {
-      tone: 'false',
-      label: 'FALSO',
-      cssVar: '#ef4444',
-      duotone: '#ff1744',
-      blurb: 'contradito por fontes da lista'
+    SUBSTANCIALMENTE_VERDADEIRO: {
+      tone: 'true',
+      label: 'SUBSTANCIALMENTE VERDADEIRO',
+      short: 'SUBST. VERDADEIRO',
+      icon: '≈',
+      cssVar: '#4ade80',
+      duotone: '#00e07a',
+      blurb: 'o essencial confere; algum detalhe está impreciso'
     },
     ENGANOSO: {
       tone: 'misleading',
       label: 'ENGANOSO',
+      icon: '!',
       cssVar: '#f59e0b',
       duotone: '#ffb020',
-      blurb: 'tem algo de verdade, mas distorce'
+      blurb: 'há um núcleo verdadeiro, mas o número ou a conclusão distorcem a fonte'
     },
-    FORA_DE_CONTEXT: {
-      tone: 'context',
-      label: 'FORA DE CONTEXTO',
-      cssVar: '#a855f7',
-      duotone: '#a855f7',
-      blurb: 'o dado existe, mas não diz isso'
-    },
-    DESATUALIZADO: {
-      tone: 'stale',
-      label: 'DESATUALIZADO',
-      cssVar: '#38bdf8',
-      duotone: '#38bdf8',
-      blurb: 'foi verdade, já não é'
+    FALSO: {
+      tone: 'false',
+      label: 'FALSO',
+      icon: '✕',
+      cssVar: '#ef4444',
+      duotone: '#ff1744',
+      blurb: 'a fonte contradiz o dado, ou o dado não existe'
     },
     NAO_VERIFICADO: {
       tone: 'unknown',
       label: 'NÃO VERIFICADO',
+      icon: '?',
       cssVar: '#7c8899',
       duotone: '#7c8899',
-      blurb: 'a busca restrita não resolveu'
+      blurb: 'as fontes permitidas não permitem concluir'
     },
     ERRO: {
       tone: 'error',
       label: 'ERRO NA CHECAGEM',
+      icon: '·',
       cssVar: '#94a3b8',
       duotone: '#94a3b8',
       blurb: 'falha técnica, tentar de novo'
@@ -164,8 +168,7 @@
   var VERDICT_RANK = {
     FALSO: 5,
     ENGANOSO: 4,
-    FORA_DE_CONTEXT: 3,
-    DESATUALIZADO: 2,
+    SUBSTANCIALMENTE_VERDADEIRO: 2,
     VERDADEIRO: 1,
     NAO_VERIFICADO: 0,
     ERRO: 0

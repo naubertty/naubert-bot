@@ -58,7 +58,7 @@
     properties: {
       veredito: {
         type: 'string',
-        enum: ['VERDADEIRO', 'FALSO', 'ENGANOSO', 'FORA_DE_CONTEXT', 'DESATUALIZADO', 'NAO_VERIFICADO'],
+        enum: ['VERDADEIRO', 'SUBSTANCIALMENTE_VERDADEIRO', 'ENGANOSO', 'FALSO', 'NAO_VERIFICADO'],
         description: 'Classificação final. Use NAO_VERIFICADO quando a busca restrita não trouxer base suficiente.'
       },
       explicacao: { type: 'string', description: 'De 1 a 3 frases explicando o que as fontes mostram, em linguagem direta, sem opinião política.' },
@@ -109,12 +109,11 @@
     '- Cite somente URLs que apareceram nos resultados das buscas, copiadas literalmente. Nunca construa, complete ou adivinhe uma URL.',
     '- Se a busca não retornar nada útil sobre a afirmação, o veredito é NAO_VERIFICADO. Não preencha a lacuna com conhecimento próprio.',
     '- Distinga com rigor:',
-    '   VERDADEIRO      -> o dado confere com a fonte, no período e no recorte citados.',
-    '   FALSO           -> a fonte contradiz o dado, ou o dado não existe.',
-    '   ENGANOSO        -> há um núcleo verdadeiro, mas o número, o recorte ou a conclusão distorcem o que a fonte diz.',
-    '   FORA_DE_CONTEXT -> o dado existe, mas se refere a outro período, local, população ou indicador.',
-    '   DESATUALIZADO   -> era verdade em outro momento e já foi revisado ou superado.',
-    '   NAO_VERIFICADO  -> as fontes permitidas não permitem concluir.',
+    '   VERDADEIRO                  -> o dado confere com a fonte, no período e no recorte citados.',
+    '   SUBSTANCIALMENTE_VERDADEIRO -> o essencial confere, mas há imprecisão em detalhe secundário (arredondamento, data, unidade).',
+    '   ENGANOSO                    -> o dado existe, mas o número, o recorte, o período ou a conclusão distorcem o que a fonte diz.',
+    '   FALSO                       -> a fonte contradiz o dado, ou o dado não existe.',
+    '   NAO_VERIFICADO              -> as fontes permitidas não permitem concluir.',
     '- Não comente o desempenho de candidatos, não atribua intenção e não opine sobre política.',
     '- Se a afirmação for uma previsão ou promessa, verifique apenas a parte factual.',
     '- Escreva em português do Brasil, direto, sem jargão.'
@@ -170,11 +169,23 @@
     INVERTIDO: 'FALSO',
     ENGANADOR: 'ENGANOSO',
     DISTORCIDO: 'ENGANOSO',
-    FORA_DE_CONTEXTO: 'FORA_DE_CONTEXT',
-    DESATUALIZADA: 'DESATUALIZADO',
+    SUBSTANCIALMENTE_VERDADEIRA: 'SUBSTANCIALMENTE_VERDADEIRO',
+    SUBSTANTIALLY_TRUE: 'SUBSTANCIALMENTE_VERDADEIRO',
+    MOSTLY_TRUE: 'SUBSTANCIALMENTE_VERDADEIRO',
+    QUASE_VERDADEIRO: 'SUBSTANCIALMENTE_VERDADEIRO',
+    PARCIALMENTE_VERDADEIRO: 'SUBSTANCIALMENTE_VERDADEIRO',
+    VERDADEIRO_COM_RESSALVA: 'SUBSTANCIALMENTE_VERDADEIRO',
+    MISLEADING: 'ENGANOSO',
+    IMPRECISO: 'ENGANOSO',
+    // Vereditos da versão anterior: agora são casos de ENGANOSO.
+    FORA_DE_CONTEXT: 'ENGANOSO',
+    FORA_DE_CONTEXTO: 'ENGANOSO',
+    DESATUALIZADO: 'ENGANOSO',
+    DESATUALIZADA: 'ENGANOSO',
     NAO_CONFIRMADO: 'NAO_VERIFICADO',
     NAO_CHECADO: 'NAO_VERIFICADO',
-    UNVERIFIED: 'NAO_VERIFICADO'
+    UNVERIFIED: 'NAO_VERIFICADO',
+    UNVERIFIABLE: 'NAO_VERIFICADO'
   };
 
   function normalizeVerdict(v) {
