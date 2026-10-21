@@ -5,6 +5,31 @@
   'use strict';
   var NB = (global.NB = global.NB || {});
   var KEY = 'naubert-bot:v2'; // v2 = provedor OpenRouter
+  var SETTINGS_VERSION = 2;    // 2 = Gemini é o padrão
+
+  // Padrões da versão anterior. Quem nunca mexeu nesses campos é migrado para
+  // o novo provedor; quem escolheu outro modelo à mão continua onde estava.
+  var LEGACY = {
+    model: 'anthropic/claude-opus-5.5',
+    triageModel: 'anthropic/claude-haiku-5.5'
+  };
+
+  function migrate(saved) {
+    if (!saved || saved.settingsVersion === SETTINGS_VERSION) return null;
+    var out = Object.assign({}, saved);
+    var neverTouched =
+      (!saved.provider || saved.provider === 'openrouter') &&
+      (!saved.model || saved.model === LEGACY.model) &&
+      (!saved.triageModel || saved.triageModel === LEGACY.triageModel);
+    if (neverTouched) {
+      out.provider = 'gemini';
+      out.model = 'gemini-3.8-flash';
+      out.triageModel = 'gemini-3.1-flash-lite';
+      out.sttModel = 'gemini-3.5-transcribe';
+    }
+    out.settingsVersion = SETTINGS_VERSION;
+    return out;
+  }
 
   function deepMerge(base, patch) {
     var out = Array.isArray(base) ? base.slice() : Object.assign({}, base);
@@ -20,15 +45,26 @@
   }
 
   function Store() {
-    this.state = deepMerge(NB.config.defaults(), this._read() || {});
-    // A lista de veículos é guardada à parte por ser grande.
-    var saved = null;
-    try {
-      saved = global.localStorage.getItem(KEY + ':outlets');
-    } catch (e) {
-      saved = null;
+    var saved = this._read();
+    var migrated = migrate(saved);
+    this.state = deepMerge(NB.config.defaults(), migrated || saved || {});
+    this.migrated = !!migrated && migrated.provider !== (saved && saved.provider);
+    if (migrated) {
+      // grava já migrado: a próxima abertura não passa por aqui de novo
+      try {
+        global.localStorage.setItem(KEY, JSON.stringify(this.state));
+      } catch (e) {
+        /* sem localStorage: segue só em memória */
+      }
     }
-    this.outlets = saved ? NB.outlets.parseList(saved) : NB.outlets.DEFAULT_LIST.slice();
+    // A lista de veículos é guardada à parte por ser grande.
+    var savedOutlets = null;
+    try {
+      savedOutlets = global.localStorage.getItem(KEY + ':outlets');
+    } catch (e) {
+      savedOutlets = null;
+    }
+    this.outlets = savedOutlets ? NB.outlets.parseList(savedOutlets) : NB.outlets.DEFAULT_LIST.slice();
   }
 
   Store.prototype._read = function () {
@@ -61,7 +97,7 @@
   };
 
   Store.prototype.reset = function () {
-    this.state = NB.config.defaults();
+    this.state = deepMerge(NB.config.defaults(), { settingsVersion: SETTINGS_VERSION });
     this.outlets = NB.outlets.DEFAULT_LIST.slice();
     return this.save();
   };

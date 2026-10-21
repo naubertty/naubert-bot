@@ -345,3 +345,10 @@ Flash-Lite 3.1 a 0,25/1,50; `thoughtsTokenCount` conta como saída. Uma checagem
 `generateContent` com `inline_data` — assim, quem só tem chave do Gemini não fica dependente do saldo do
 OpenRouter, que era exatamente o problema que motivou a troca. O servidor normaliza a resposta para
 `{text, usage}`, então o resto do `audio.js` não mudou.
+
+**Configuração salva vence padrão novo.** Trocar `DEFAULTS.provider` não muda nada para quem já abriu o app:
+o `localStorage` guarda `provider: 'openrouter'` e o merge usa o que está salvo. Por isso entrou uma
+migração versionada (`settingsVersion` em `store.js`): estado sem versão e com o provedor/modelos antigos
+intocados é reescrito para o Gemini na primeira abertura; quem já tinha trocado o modelo à mão fica onde
+está. A migração roda uma vez e grava o resultado — sem isso, o usuário veria a tela antiga, com a faixa de
+crédito do OpenRouter, mesmo depois de atualizar.

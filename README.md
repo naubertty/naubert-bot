@@ -270,6 +270,11 @@ fechada de fontes e devolve o veredito validado por `responseSchema`.
 Preço: Gemini 3.8 Flash a US$ 0,75/1M de entrada e 3,75/1M de saída; triagem no 3.1 Flash-Lite
 (0,25/1,50). A busca é cobrada por consulta: 5.000/mês grátis com billing ativo, depois US$ 14/1.000.
 
+**Quem já usava o app** é migrado na primeira abertura: se você nunca trocou o provedor nem o modelo, as
+configurações salvas passam a apontar para o Gemini (a lista de veículos e o resto ficam intactos). Se já
+tinha escolhido outro modelo à mão, nada muda — troque em **Configurações → Provedor**. O `localStorage`
+antigo guarda `provider: 'openrouter'` e, sem essa migração, o padrão novo não teria efeito.
+
 No OpenRouter a verificação é dividida em duas chamadas porque structured outputs e busca na mesma
 requisição fazem o provedor **suprimir as anotações** de citação — e sem anotação não há auditoria. Então:
 

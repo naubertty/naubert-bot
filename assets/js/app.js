@@ -59,6 +59,11 @@
     NB.UI.fillSettings();
     NB.UI.log('info', 'pronto · ' + (speech.supported() ? 'reconhecimento de voz disponível' : 'sem Web Speech API neste navegador'));
 
+    if (store.migrated) {
+      NB.UI.log('info', 'configuração migrada para o Gemini — confira a chave em Configurações');
+      NB.UI.toast('O provedor padrão agora é o Gemini. Se ainda não tem a chave, abra Configurações → Chave do Gemini.', 'warn', 8000);
+    }
+
     if (location.protocol === 'file:') {
       NB.UI.log('warn', 'página aberta via file:// — o proxy não funciona neste modo');
       NB.UI.toast('Você abriu o arquivo direto. Rode "npm start" e use http://localhost:8787, ou configure a API no modo direto.', 'warn', 8000);
@@ -326,7 +331,8 @@
     try {
       await tab.start();
       requestWakeLock();
-      NB.UI.log('info', 'captura de aba ativa · trechos de ' + tab.chunkSeconds + ' s · ' + store.state.sttModel);
+      var sttUsed = /^gemini/.test(store.state.sttModel || '') ? store.state.sttModel : store.state.provider === 'gemini' ? store.state.model : store.state.sttModel;
+      NB.UI.log('info', 'captura de aba ativa · trechos de ' + tab.chunkSeconds + ' s · ' + sttUsed);
       NB.UI.transcriptMeta('ouvindo o áudio da aba · trechos de ' + tab.chunkSeconds + ' s');
       NB.UI.toast(
         'Capturando o áudio da aba. Deixe o vídeo do debate tocando — de preferência nesta aba, com o som ligado.',

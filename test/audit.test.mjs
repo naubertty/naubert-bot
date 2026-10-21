@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
 
-function loadNB() {
+function loadNB(storage) {
   const sandbox = {
     console,
     URL,
@@ -30,6 +30,7 @@ function loadNB() {
     isFinite,
   };
   sandbox.window = sandbox;
+  if (storage) sandbox.localStorage = storage;
   vm.createContext(sandbox);
   for (const file of ['config.js', 'outlets.js', 'store.js', 'audit.js', 'pipeline.js', 'providers.js']) {
     const code = fs.readFileSync(path.join(root, 'assets', 'js', file), 'utf8');
@@ -308,6 +309,74 @@ test('MAX_TOKENS do Gemini vira erro explicativo, não JSON truncado', async () 
     () => pipeline._callJson({ model: 'gemini-3.8-flash', contents: [] }, 'teste', 'gemini'),
     /MAX_TOKENS/
   );
+});
+
+/* ------------------------------------------------------------- migração */
+
+function fakeStorage(initial) {
+  const data = Object.assign({}, initial);
+  return {
+    getItem: (k) => (k in data ? data[k] : null),
+    setItem: (k, v) => {
+      data[k] = String(v);
+    },
+    removeItem: (k) => {
+      delete data[k];
+    },
+    data,
+  };
+}
+
+test('quem usava os padrões antigos é migrado para o Gemini', () => {
+  const storage = fakeStorage({
+    'naubert-bot:v2': JSON.stringify({
+      provider: 'openrouter',
+      model: 'anthropic/claude-opus-5.5',
+      triageModel: 'anthropic/claude-haiku-5.5',
+      apiMode: 'direct',
+      openrouterKey: 'sk-or-v1-x',
+    }),
+  });
+  const NB2 = loadNB(storage);
+  const store = new NB2.Store();
+  assert.equal(store.state.provider, 'gemini');
+  assert.equal(store.state.model, 'gemini-3.8-flash');
+  assert.equal(store.state.triageModel, 'gemini-3.1-flash-lite');
+  assert.equal(store.state.sttModel, 'gemini-3.5-transcribe');
+  // o resto da configuração do usuário fica
+  assert.equal(store.state.apiMode, 'direct');
+  assert.equal(store.state.openrouterKey, 'sk-or-v1-x');
+  // já gravou migrado
+  assert.equal(JSON.parse(storage.data['naubert-bot:v2']).settingsVersion, 2);
+});
+
+test('quem escolheu outro modelo continua no OpenRouter', () => {
+  const storage = fakeStorage({
+    'naubert-bot:v2': JSON.stringify({
+      provider: 'openrouter',
+      model: 'openai/gpt-5.2',
+      triageModel: '',
+    }),
+  });
+  const NB2 = loadNB(storage);
+  const store = new NB2.Store();
+  assert.equal(store.state.provider, 'openrouter');
+  assert.equal(store.state.model, 'openai/gpt-5.2');
+  assert.equal(store.state.settingsVersion, 2);
+});
+
+test('configuração já migrada não é tocada de novo', () => {
+  const storage = fakeStorage({
+    'naubert-bot:v2': JSON.stringify({
+      settingsVersion: 2,
+      provider: 'openrouter',
+      model: 'anthropic/claude-opus-5.5',
+      triageModel: 'anthropic/claude-haiku-5.5',
+    }),
+  });
+  const NB2 = loadNB(storage);
+  const store = new NB2.Store();
+  assert.equal(store.state.provider, 'openrouter');
 });
 
 /* ------------------------------------------------------- regra de veredito */

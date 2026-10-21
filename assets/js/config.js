@@ -174,6 +174,9 @@
   /* -------------------------------------------------------------- defaults */
 
   var DEFAULTS = {
+    // Versão do formato das configurações: usada para migrar quem já usava o app.
+    settingsVersion: 2,
+
     // Provedor
     provider: 'gemini',                // 'gemini' | 'openrouter' | 'anthropic'
 

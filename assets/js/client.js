@@ -228,7 +228,18 @@
    * Vale quando o provedor é o Gemini e o modelo escolhido também é.
    */
   function isGeminiStt(cfg) {
-    return cfg.provider === 'gemini' && /^gemini/.test(String(cfg.sttModel || ''));
+    return cfg.provider === 'gemini';
+  }
+
+  /**
+   * Modelo de transcrição efetivo no Gemini. Configuração antiga pode trazer
+   * `openai/whisper-1` mesmo com o provedor Gemini — nesse caso usa o modelo
+   * principal, que aceita áudio, em vez de mandar slug do Whisper para o Google.
+   */
+  function geminiSttModel(cfg, requested) {
+    if (/^gemini/.test(String(requested || ''))) return requested;
+    if (/^gemini/.test(String(cfg.sttModel || ''))) return cfg.sttModel;
+    return cfg.model;
   }
 
   async function geminiTranscribe(cfg, body, signal) {
@@ -245,8 +256,10 @@
       'Transcreva literalmente, em português do Brasil, a fala do áudio a seguir. ' +
       'Responda só com a transcrição, sem comentários. Se não houver fala, responda vazio.';
 
+    var model = geminiSttModel(cfg, body.model);
+
     var payload = {
-      model: body.model,
+      model: model,
       contents: [
         {
           role: 'user',
@@ -258,11 +271,11 @@
 
     if (cfg.apiMode === 'proxy') {
       return send(base(cfg) + '/api/gemini/transcribe', cfg, 'gemini', {
-        model: body.model,
+        model: model,
         input_audio: { data: audio.data, format: String(audio.format || 'webm').replace(/^audio\//, '') },
       }, signal);
     }
-    return send(geminiUrl(cfg, body.model), cfg, 'gemini', payload, signal);
+    return send(geminiUrl(cfg, model), cfg, 'gemini', payload, signal);
   }
 
   /**
