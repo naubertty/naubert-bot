@@ -500,7 +500,19 @@ a { color: inherit; }
   margin-bottom: 8px;
 }
 .t-meta { font-size: 10.5px; color: var(--text-mute); font-family: var(--mono); }
-.t-actions { margin-left: auto; display: flex; gap: 6px; }
+.t-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+
+/* Medidor de entrada: responde "o microfone está ouvindo?" */
+.mic-meter {
+  position: relative; width: 64px; height: 8px; border-radius: 4px;
+  background: rgba(255, 255, 255, .07); overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08);
+}
+.mic-meter i {
+  position: absolute; inset: 0; width: 0%;
+  background: linear-gradient(90deg, #4ad6a1, #b6e05a 72%, #ff6b6b);
+  transition: width .08s linear;
+}
 
 .transcript-body {
   min-height: 44px; max-height: 92px; overflow-y: auto;

@@ -39,7 +39,10 @@
       btnTestApi: $('btnTestApi'),
       testApiOut: $('testApiOut'),
       btnDemoEmpty: $('btnDemoEmpty'),
-      btnPip: $('btnPip')
+      btnPip: $('btnPip'),
+      btnMicTest: $('btnMicTest'),
+      micMeter: $('micMeter'),
+      micLevel: $('micLevel')
     };
 
     createSpeech();
@@ -69,9 +72,96 @@
     });
   }
 
+  /* ------------------------------------------------------------ microfone */
+
+  var meterTimer = null;
+
+  function paintLevel(v) {
+    if (!el.micLevel || !el.micMeter) return;
+    el.micMeter.hidden = false;
+    el.micLevel.style.width = Math.round(Math.min(1, Math.max(0, v)) * 100) + '%';
+  }
+
+  function startMeter() {
+    if (meterTimer || !NB.Mic) return;
+    NB.Mic.open()
+      .then(function (info) {
+        NB.UI.transcriptMeta('microfone · ' + info.label);
+      })
+      .catch(function (err) {
+        NB.UI.log('warn', 'não foi possível medir o microfone: ' + (err.message || err));
+        return;
+      });
+    meterTimer = setInterval(function () {
+      paintLevel(NB.Mic.level());
+    }, 100);
+  }
+
+  function stopMeter() {
+    clearInterval(meterTimer);
+    meterTimer = null;
+    if (el.micMeter) el.micMeter.hidden = true;
+    if (NB.Mic) NB.Mic.close();
+  }
+
+  /**
+   * Mede o microfone por 10 s e diz se ele ouviu algo. É o teste que separa
+   * "o microfone não está ouvindo o vídeo" de "o serviço do Google não respondeu".
+   */
+  async function testMic() {
+    if (!NB.Mic) {
+      NB.UI.toast('Este navegador não expõe o microfone.', 'err', 7000);
+      return;
+    }
+    if (el.btnMicTest) el.btnMicTest.disabled = true;
+    var peak = 0;
+    try {
+      var info = await NB.Mic.open();
+      NB.UI.transcriptMeta('medindo o microfone · ' + info.label);
+      var started = Date.now();
+      await new Promise(function (resolve) {
+        var tick = setInterval(function () {
+          var v = NB.Mic.level();
+          peak = Math.max(peak, v);
+          paintLevel(v);
+          if (Date.now() - started > 10000) {
+            clearInterval(tick);
+            resolve();
+          }
+        }, 100);
+      });
+
+      if (peak < 0.06) {
+        NB.UI.toast(
+          'O microfone não captou som em 10 s. Se o debate está tocando, o áudio não está chegando: ' +
+            'confira o dispositivo de entrada no Windows (ícone de som na barra) e se o vídeo está no volume. ' +
+            'Com fone de ouvido, o microfone não ouve o vídeo — veja "Mixagem estéreo" no README.',
+          'err',
+          14000
+        );
+        NB.UI.log('warn', 'teste de microfone: silêncio (pico ' + Math.round(peak * 100) + '%)');
+      } else {
+        NB.UI.toast(
+          'Microfone ouvindo (pico ' + Math.round(peak * 100) + '% em ' + info.label + '). ' +
+            'Se a transcrição continuar vazia com este nível, o problema é o serviço de reconhecimento do Chrome.',
+          null,
+          10000
+        );
+        NB.UI.log('ok', 'teste de microfone: sinal ok (pico ' + Math.round(peak * 100) + '%)');
+      }
+    } catch (err) {
+      NB.UI.toast('Não foi possível abrir o microfone: ' + (err.message || err), 'err', 9000);
+    } finally {
+      if (!speech || !speech.recording) stopMeter();
+      if (el.btnMicTest) el.btnMicTest.disabled = false;
+    }
+  }
+
   function bindSpeech() {
     speech.on('state', function (s) {
       NB.UI.setMicStatus(!!s.recording, s.label);
+      if (s.recording) startMeter();
+      else stopMeter();
     });
 
     speech.on('interim', function (p) {
@@ -87,9 +177,14 @@
       handleSegment(win);
     });
 
+    speech.on('warn', function (e) {
+      NB.UI.log('warn', e.message);
+      NB.UI.transcriptMeta(e.message);
+    });
+
     speech.on('error', function (e) {
       NB.UI.log('error', e.message);
-      NB.UI.toast(e.message, 'err', 7000);
+      NB.UI.toast(e.message, 'err', 9000);
     });
   }
 
@@ -260,6 +355,7 @@
     });
 
     el.btnTestApi.addEventListener('click', testApi);
+    if (el.btnMicTest) el.btnMicTest.addEventListener('click', testMic);
     var btnList = $('btnListModels');
     if (btnList) btnList.addEventListener('click', listModels);
 

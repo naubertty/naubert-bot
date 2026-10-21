@@ -89,6 +89,7 @@
     this.recording = false;
     this.interim = '';
     this.errorCount = 0;
+    this.networkFails = 0;   // falhas seguidas do serviço do Google
     this._manualStop = false;
     this.segmenter = new Segmenter({
       chunkChars: opts.chunkChars,
@@ -117,6 +118,7 @@
     };
 
     this.rec.onresult = function (event) {
+      self.networkFails = 0;
       var interim = '';
       for (var i = event.resultIndex; i < event.results.length; i++) {
         var r = event.results[i];
@@ -144,9 +146,25 @@
         return;
       }
       if (err === 'network') {
+        self.networkFails++;
+        // O Chrome perde o contato com o serviço do Google com frequência em
+        // rede instável. O `onend` reinicia sozinho; aqui só aumentamos a espera
+        // e avisamos. Depois de 5 falhas seguidas, viram erro com instruções.
+        if (self.networkFails < 5) {
+          self.emit('warn', {
+            code: err,
+            message: 'reconhecimento sem resposta — tentando de novo (' + self.networkFails + '/5)'
+          });
+          return;
+        }
+        self.segmenter.flush('falha de rede');
         self.emit('error', {
           code: err,
-          message: 'O serviço de reconhecimento do Chrome não respondeu. Verifique a conexão — o áudio é transcrito nos servidores do Google, não nesta página.'
+          message:
+            'O Chrome não conseguiu falar com o serviço de reconhecimento (5 tentativas). ' +
+            'Abra google.com nesta mesma aba: se abrir, tente o Edge; se não abrir, o problema é a rede. ' +
+            'VPN, DNS filtrando google.com e extensões que bloqueiam requisições são as causas mais comuns. ' +
+            'Enquanto isso, use a entrada manual ou cole a fala no campo de texto.'
         });
         return;
       }
@@ -160,6 +178,7 @@
           self.segmenter.push(self.interim);
           self.interim = '';
         }
+        var wait = 350 + Math.min(self.networkFails, 4) * 1500;
         setTimeout(function () {
           if (!self.recording) return;
           try {
@@ -167,7 +186,7 @@
           } catch (e) {
             /* já iniciado */
           }
-        }, 350);
+        }, wait);
       } else {
         self.emit('state', { recording: false, label: 'parado' });
       }
@@ -248,6 +267,87 @@
     this.segmenter.destroy();
   };
 
+  /* ------------------------------------------------------------------ mic
+   *
+   * Medidor de entrada. Serve para responder a pergunta que a Web Speech API
+   * não responde: o microfone está ouvindo alguma coisa?
+   *
+   *   - "o nível não mexe"  -> microfone errado, mudo ou bloqueado;
+   *   - "o nível mexe e não transcreve" -> problema é o serviço do Google.
+   *
+   * Usa getUserMedia + AnalyserNode, só para medir. Nada é gravado.
+   */
+
+  var Mic = {
+    stream: null,
+    ctx: null,
+    analyser: null,
+    data: null,
+    label: '',
+
+    isOpen: function () {
+      return !!this.analyser;
+    },
+
+    open: async function () {
+      if (this.analyser) return { label: this.label, open: true };
+      if (!global.navigator || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Este navegador não expõe o microfone. Use http://localhost ou https (não abra o arquivo direto).');
+      }
+      var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      var Ctx = global.AudioContext || global.webkitAudioContext;
+      if (!Ctx) throw new Error('Este navegador não expõe o AudioContext.');
+      var ctx = new Ctx();
+      var source = ctx.createMediaStreamSource(stream);
+      var analyser = ctx.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.5;
+      source.connect(analyser);
+      this.stream = stream;
+      this.ctx = ctx;
+      this.analyser = analyser;
+      this.data = new Float32Array(analyser.fftSize);
+      var track = stream.getAudioTracks()[0];
+      this.label = (track && track.label) || 'microfone';
+      return { label: this.label, open: true };
+    },
+
+    /** Nível de entrada de 0 a 1, já com curva perceptual. */
+    level: function () {
+      if (!this.analyser) return 0;
+      this.analyser.getFloatTimeDomainData(this.data);
+      var sum = 0;
+      for (var i = 0; i < this.data.length; i++) sum += this.data[i] * this.data[i];
+      var rms = Math.sqrt(sum / this.data.length);
+      return Math.min(1, Math.pow(rms / 0.12, 0.6));
+    },
+
+    close: function () {
+      if (this.stream) {
+        this.stream.getTracks().forEach(function (t) {
+          try {
+            t.stop();
+          } catch (e) {
+            /* ignora */
+          }
+        });
+      }
+      if (this.ctx && this.ctx.close) {
+        try {
+          this.ctx.close();
+        } catch (e) {
+          /* ignora */
+        }
+      }
+      this.stream = null;
+      this.ctx = null;
+      this.analyser = null;
+      this.data = null;
+      this.label = '';
+    }
+  };
+
+  NB.Mic = Mic;
   NB.Speech = Speech;
   NB.Segmenter = Segmenter;
 })(window);

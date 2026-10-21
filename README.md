@@ -142,9 +142,22 @@ clique em **janela flutuante** e arraste a janelinha para cima do vídeo.
 | `OpenRouter: AUSENTE` no terminal | O servidor imprime logo abaixo o caminho exato do `.env` que ele procurou. Se o arquivo estiver em outra pasta (típico de ZIP extraído duas vezes, pasta dentro de pasta), crie o `.env` ao lado do `package.json` e do `server.js`. O `.env` é **lido só ao iniciar**: edite e rode `npm start` de novo. |
 | “proxy inacessível” na página | O terminal do `npm start` foi fechado — suba de novo. |
 | Microfone bloqueado | Permita no cadeado da barra de endereço. Se a página estiver dentro de um preview embutido, abra em aba própria. |
-| Nada é transcrito | Use Chrome/Edge; a transcrição depende dos servidores do Google e de internet. Teste com **entrada manual**. |
+| Nada é transcrito | Primeiro clique em **testar microfone** (ao lado de *checar janela*). Se o medidor não mexer, o áudio não está chegando no navegador — veja o item abaixo. Se mexer e mesmo assim não sair texto, o problema é o serviço de reconhecimento do Google: abra `google.com` nesta mesma aba; VPN, DNS que filtra `google.com` e extensões bloqueadoras são as causas comuns. Enquanto isso, use **entrada manual**. |
+| Microfone ouve a sala, não o vídeo | O reconhecimento escuta o microfone, não a aba. Com fone de ouvido não há o que transcrever. No Windows, habilite **Mixagem estéreo** (Painel de Controle → Som → Gravação → clique direito no espaço vazio → *Mostrar dispositivos desativados* → ative) e escolha esse dispositivo como entrada: o áudio do vídeo vai direto para o Chrome, sem ruído da sala e sem cancelamento de eco. |
+| Transcrição atrasada ou picada | A janela fecha em 260 caracteres ou 30 s. Diminua `chunkChars` nas configurações para 140 se o debate for rápido; o custo é mais chamadas. |
 | 401 na checagem | Chave inválida ou revogada: gere outra em [openrouter.ai/workspaces/default/keys](https://openrouter.ai/workspaces/default/keys) e atualize o `.env`. |
 | 402 na checagem | Sem créditos no OpenRouter. Recarregue em [openrouter.ai/credits](https://openrouter.ai/credits) ou troque para um modelo mais barato na triagem. |
+
+### Sobre a transcrição
+
+Para testar com o microfone conhecido:
+
+1. **Testar microfone** mede 10 s e mostra no aviso o pico e o nome do dispositivo;
+2. **Iniciar escuta** liga o mesmo medidor ao lado dos botões da transcrição, em tempo real.
+
+Se o medidor fica no zero e o vídeo está tocando, o problema é de captura (dispositivo errado, mudo, ou
+fone de ouvido). Se o medidor mexe e nada aparece escrito, o problema é a conversa do Chrome com os
+servidores de reconhecimento do Google — o app tenta de novo até 5 vezes antes de avisar.
 
 ### Onde ficam as configurações
 
