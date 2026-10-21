@@ -1,0 +1,545 @@
+/* naubert-bot · app.js
+ * Amarra reconhecimento de voz -> triagem -> verificação -> tela.
+ */
+(function (global) {
+  'use strict';
+  var NB = (global.NB = global.NB || {});
+
+  var store = new NB.Store();
+  var pipeline = new NB.Pipeline({ store: store });
+  var speech = null;
+  var demo = null;
+  var triageChain = Promise.resolve();
+  var healthChecked = false;
+  var serverKeyReady = null; // null = ainda não sei
+  var wakeLock = null;
+
+  var el = {};
+
+  function $(id) {
+    return document.getElementById(id);
+  }
+
+  function boot() {
+    NB.UI.init(store);
+    NB.UI.bindConsole();
+
+    el = {
+      btnStart: $('btnStart'),
+      btnDemo: $('btnDemo'),
+      btnSettings: $('btnSettings'),
+      btnExport: $('btnExport'),
+      btnFlush: $('btnFlush'),
+      btnManual: $('btnManual'),
+      btnClearTranscript: $('btnClearTranscript'),
+      manualForm: $('manualForm'),
+      manualInput: $('manualInput'),
+      settingsForm: $('settingsForm'),
+      btnResetSettings: $('btnResetSettings'),
+      btnTestApi: $('btnTestApi'),
+      testApiOut: $('testApiOut'),
+      btnDemoEmpty: $('btnDemoEmpty'),
+      btnPip: $('btnPip')
+    };
+
+    createSpeech();
+    bindSpeech();
+    bindPipeline();
+    bindChrome();
+
+    NB.UI.fillSettings();
+    NB.UI.log('info', 'pronto · ' + (speech.supported() ? 'reconhecimento de voz disponível' : 'sem Web Speech API neste navegador'));
+
+    if (location.protocol === 'file:') {
+      NB.UI.log('warn', 'página aberta via file:// — o proxy não funciona neste modo');
+      NB.UI.toast('Você abriu o arquivo direto. Rode "npm start" e use http://localhost:8787, ou configure a API no modo direto.', 'warn', 8000);
+    }
+
+    checkHealth(true);
+  }
+
+  /* -------------------------------------------------------------- speech */
+
+  function createSpeech() {
+    speech = new NB.Speech({
+      lang: store.state.lang,
+      chunkChars: store.state.chunkChars,
+      chunkSeconds: store.state.chunkSeconds,
+      contextSentences: store.state.contextSentences
+    });
+  }
+
+  function bindSpeech() {
+    speech.on('state', function (s) {
+      NB.UI.setMicStatus(!!s.recording, s.label);
+    });
+
+    speech.on('interim', function (p) {
+      NB.UI.transcriptInterim(p.text);
+    });
+
+    speech.on('buffer', function (b) {
+      if (!b.buffer) return;
+      NB.UI.transcriptMeta('janela aberta · ' + b.buffer.length + '/' + store.state.chunkChars + ' caracteres');
+    });
+
+    speech.on('segment', function (win) {
+      handleSegment(win);
+    });
+
+    speech.on('error', function (e) {
+      NB.UI.log('error', e.message);
+      NB.UI.toast(e.message, 'err', 7000);
+    });
+  }
+
+  function handleSegment(win) {
+    if (demo && demo.running) {
+      NB.UI.log('warn', 'segmento ignorado durante a simulação');
+      return;
+    }
+    NB.UI.transcriptAppend(win.text);
+    NB.UI.transcriptMeta('janela ' + win.id + ' · triando…');
+    NB.UI.log('info', 'janela ' + win.id + ' fechada por ' + win.reason + ' (' + win.text.length + ' caracteres)');
+
+    if (!isConfigured()) {
+      NB.UI.transcriptMeta('janela ' + win.id + ' · sem checagem (API não configurada)');
+      return;
+    }
+
+    // Triagens em série: mantém a ordem e evita rajadas de chamadas.
+    triageChain = triageChain
+      .then(function () {
+        return pipeline.triage(win);
+      })
+      .then(function (out) {
+        NB.UI.transcriptMeta(
+          'janela ' + win.id + ' · ' + out.claims.length + ' afirmação(ões) · ' +
+            out.claims.filter(function (c) { return c.tipo === 'checavel'; }).length + ' checável(is)'
+        );
+        if (out.comentario) NB.UI.log('info', 'triagem: ' + out.comentario);
+        pipeline.enqueue(out.claims);
+      })
+      .catch(function (err) {
+        NB.UI.log('error', 'triagem falhou: ' + (err.message || err));
+        NB.UI.toast('Triagem falhou: ' + (err.message || err), 'err', 6000);
+        NB.UI.transcriptMeta('janela ' + win.id + ' · triagem falhou');
+      });
+  }
+
+  /* ------------------------------------------------------------ pipeline */
+
+  function bindPipeline() {
+    pipeline.on('log', function (l) {
+      NB.UI.log(l.level, l.msg);
+    });
+
+    pipeline.on('claim', function (claim) {
+      NB.UI.addPending(claim);
+      NB.UI.log('info', 'na fila · ' + claim.tema + ' · p' + claim.prioridade + ' · ' + claim.texto.slice(0, 70));
+    });
+
+    pipeline.on('checking', function (claim) {
+      NB.UI.log('info', 'checando · ' + claim.texto.slice(0, 60));
+    });
+
+    pipeline.on('skipped', function (s) {
+      NB.UI.log('warn', 'descartada (' + s.reason + ') · ' + s.claim.texto.slice(0, 70));
+    });
+
+    pipeline.on('result', function (result) {
+      consumeResult(result);
+    });
+
+    pipeline.on('error', function (p) {
+      NB.UI.log('error', 'falha na checagem: ' + (p.error && p.error.message));
+    });
+
+    pipeline.on('usage', function (u) {
+      NB.UI.updateUsage(u);
+    });
+  }
+
+  function consumeResult(result) {
+    NB.UI.addResult(result);
+    NB.UI.pushLatency(result.latencia);
+    NB.Pip.update(result);
+    syncPipCount();
+
+    if (store.state.autoDuotone) {
+      NB.UI.tone(result.veredito, {
+        strength: store.state.duotoneStrength,
+        hold: store.state.duotoneHold
+      });
+    }
+    NB.UI.showFlash(result);
+    NB.UI.addTimeline(result.veredito);
+    NB.UI.log(
+      result.veredito === 'ERRO' ? 'error' : 'ok',
+      (result.veredito || '') + ' · ' + result.texto.slice(0, 60) + ' · ' + Math.round((result.confianca || 0) * 100) + '%'
+    );
+  }
+
+  /* --------------------------------------------------------------- chrome */
+
+  function bindChrome() {
+    el.btnStart.addEventListener('click', toggleListening);
+
+    el.btnDemo.addEventListener('click', function () {
+      if (demo && demo.running) {
+        stopDemo();
+        return;
+      }
+      startDemo();
+    });
+
+    el.btnSettings.addEventListener('click', NB.UI.openSettings);
+
+    el.btnExport.addEventListener('click', function () {
+      var results = pipeline.results.slice();
+      if (!results.length) {
+        NB.UI.toast('Ainda não há checagens para exportar.', 'warn');
+        return;
+      }
+      NB.UI.exportData(results, {
+        model: store.state.model,
+        searchTool: store.state.searchTool,
+        domains: store.outlets,
+        note: 'checagem assistida por modelo de linguagem'
+      });
+      NB.UI.toast(results.length + ' checagens exportadas em Markdown e JSON.');
+    });
+
+    el.btnFlush.addEventListener('click', function () {
+      var win = speech.flush();
+      if (!win) NB.UI.toast('Não há texto suficiente na janela atual. Digite ou fale mais.', 'warn');
+    });
+
+    el.btnManual.addEventListener('click', function () {
+      NB.UI.toggleManual();
+    });
+
+    el.manualForm.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var text = el.manualInput.value.trim();
+      if (!text) return;
+      speech.feed(text);
+      el.manualInput.value = '';
+      NB.UI.transcriptAppend(text);
+      NB.UI.transcriptMeta('entrada manual · aguardando fim da janela');
+    });
+
+    el.btnClearTranscript.addEventListener('click', function () {
+      NB.UI.transcriptClear();
+      NB.UI.transcriptMeta('transcrição limpa');
+    });
+
+    $('btnDemoEmpty').addEventListener('click', startDemo);
+
+    el.settingsForm.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      saveSettings();
+    });
+
+    var btnClose = $('btnCloseSettings');
+    if (btnClose) btnClose.addEventListener('click', NB.UI.closeSettings);
+
+    $('settings').addEventListener('click', function (ev) {
+      if (ev.target === this) NB.UI.closeSettings();
+    });
+
+    el.btnResetSettings.addEventListener('click', function () {
+      store.reset();
+      NB.UI.fillSettings();
+      NB.UI.renderVideo(store.state);
+      applyRuntimeSettings();
+      NB.UI.markSaved('padrões restaurados');
+    });
+
+    el.btnTestApi.addEventListener('click', testApi);
+
+    setupPip();
+    NB.UI.renderVideo(store.state);
+    NB.UI.setMicStatus(false, 'microfone parado');
+  }
+
+  /* ------------------------------------------------------------------ pip */
+
+  function setupPip() {
+    if (!el.btnPip) return;
+    el.btnPip.hidden = !NB.Pip.supported();
+    if (!NB.Pip.supported()) return;
+
+    el.btnPip.addEventListener('click', async function () {
+      var wasOpen = NB.Pip.isOpen();
+      var open = await NB.Pip.toggle();
+      syncPipButton();
+      if (!open && !wasOpen) {
+        NB.UI.toast(
+          'Não foi possível abrir a janela flutuante. Ela exige Chrome 116+ e uma aba própria — dentro de um preview embutido o navegador bloqueia. Abra a página em nova aba.',
+          'err',
+          9000
+        );
+      }
+      if (open) {
+        NB.Pip.setCount(document.querySelectorAll('.card').length);
+        NB.UI.toast('Janela flutuante aberta. Arraste-a para cima do vídeo do debate — ela fica à frente das outras janelas.', null, 6000);
+      }
+    });
+
+    setInterval(syncPipButton, 1200);
+  }
+
+  /* ------------------------------------------------------------ wake lock */
+
+  async function requestWakeLock() {
+    try {
+      if ('wakeLock' in navigator && navigator.wakeLock) {
+        wakeLock = await navigator.wakeLock.request('screen');
+        NB.UI.log('info', 'tela mantida acesa durante a escuta');
+      }
+    } catch (e) {
+      /* sem permissão ou sem suporte: segue normalmente */
+    }
+  }
+
+  function releaseWakeLock() {
+    if (wakeLock) {
+      try {
+        wakeLock.release();
+      } catch (e) {
+        /* ignora */
+      }
+      wakeLock = null;
+    }
+  }
+
+  function toggleListening() {
+    if (demo && demo.running) stopDemo();
+
+    if (speech.recording) {
+      speech.stop();
+      releaseWakeLock();
+      NB.UI.log('info', 'escuta parada');
+      return;
+    }
+    if (!isConfigured()) {
+      NB.UI.toast('Configure a API primeiro: sem chave não há checagem.', 'warn', 6000);
+      NB.UI.openSettings();
+      return;
+    }
+    if (store.state.apiMode === 'proxy' && serverKeyReady === false) {
+      NB.UI.toast('O proxy está sem ANTHROPIC_API_KEY. Preencha o .env e reinicie o servidor — ou use o modo direto.', 'warn', 7000);
+      NB.UI.openSettings();
+      return;
+    }
+    var ok = speech.start();
+    if (ok) {
+      requestWakeLock();
+      NB.UI.log('info', 'escuta iniciada · ' + store.state.lang);
+      NB.UI.transcriptMeta('ouvindo · janelas de ' + store.state.chunkChars + ' caracteres');
+    }
+  }
+
+  /* ---------------------------------------------------------------- demo */
+
+  function syncPipCount() {
+    NB.Pip.setCount(document.querySelectorAll('.card').length);
+  }
+
+  function syncPipButton() {
+    var btn = el.btnPip;
+    if (!btn || btn.hidden) return;
+    var open = NB.Pip.isOpen();
+    btn.classList.toggle('is-on', open);
+    btn.textContent = open ? 'fechar flutuante' : 'janela flutuante';
+  }
+
+  function startDemo() {
+    if (speech.recording) speech.stop();
+    if (!demo) {
+      demo = new NB.demo.Demo({
+        transcript: function (line) {
+          // A simulação não alimenta o segmentador: nada aqui deve virar chamada real.
+          NB.UI.transcriptAppend(line);
+          NB.UI.transcriptMeta('simulação · transcrição fictícia');
+        },
+        pending: function (claim) {
+          NB.UI.addPending(claim);
+          NB.UI.log('info', 'simulação · na fila · ' + claim.texto.slice(0, 60));
+        },
+        result: function (result) {
+          // Em simulação não há chamada real: não mexe no medidor de custo da API.
+          NB.UI.addResult(result);
+          NB.UI.pushLatency(result.latencia);
+          NB.Pip.update(result);
+          syncPipCount();
+          if (store.state.autoDuotone) {
+            NB.UI.tone(result.veredito, { strength: store.state.duotoneStrength, hold: store.state.duotoneHold });
+          }
+          NB.UI.showFlash(result);
+          NB.UI.addTimeline(result.veredito);
+          NB.UI.log('ok', 'simulação · ' + result.veredito + ' · ' + result.texto.slice(0, 50));
+        },
+        skipped: function (claim, reason) {
+          NB.UI.log('warn', 'simulação · descartada (' + reason + ') · ' + claim.texto.slice(0, 50));
+        },
+        done: function () {
+          el.btnDemo.textContent = 'Simulação';
+          NB.UI.toast('Simulação encerrada. Nada aqui foi checado de verdade — as fontes são ilustrativas.', 'warn', 7000);
+          NB.UI.transcriptMeta('simulação encerrada');
+        }
+      });
+    }
+    demo.start();
+    el.btnDemo.textContent = 'Parar simulação';
+    NB.UI.flashEmpty();
+    NB.UI.log('warn', 'modo simulação: conteúdo ilustrativo, sem chamadas à API');
+    NB.UI.toast('Simulação: os vereditos são fictícios e servem só para mostrar a tela.', 'warn', 6000);
+  }
+
+  function stopDemo() {
+    if (demo) demo.stop();
+    el.btnDemo.textContent = 'Simulação';
+    NB.UI.transcriptMeta('simulação interrompida');
+  }
+
+  /* ------------------------------------------------------------ settings */
+
+  function saveSettings() {
+    try {
+      var read = NB.UI.readSettings();
+      store.set(read.patch);
+      store.setOutlets(read.domains);
+      NB.UI.renderVideo(store.state);
+      applyRuntimeSettings();
+      healthChecked = false;
+      checkHealth();
+      NB.UI.closeSettings();
+      NB.UI.markSaved('salvo');
+      NB.UI.toast('Configurações salvas.', null, 2200);
+      NB.UI.log('info', 'configurações salvas · ' + read.domains.length + ' veículos · ' + store.state.searchTool);
+    } catch (err) {
+      NB.UI.toast(err.message, 'err', 6000);
+    }
+  }
+
+  function applyRuntimeSettings() {
+    var s = store.state;
+    speech.setLang(s.lang);
+    speech.segmenter.chunkChars = s.chunkChars;
+    speech.segmenter.chunkSeconds = s.chunkSeconds;
+    speech.segmenter.contextSentences = s.contextSentences;
+    NB.UI.transcriptMeta('ouvindo · janelas de ' + s.chunkChars + ' caracteres');
+  }
+
+  function isConfigured() {
+    var s = store.state;
+    if (s.apiMode === 'direct') return !!s.apiKey;
+    return true; // no proxy, a chave está no servidor; a resposta real dirá se falta
+  }
+
+  /* -------------------------------------------------------------- health */
+
+  async function checkHealth(quiet) {
+    var s = store.state;
+    if (s.apiMode === 'direct') {
+      NB.UI.setApiStatus(s.apiKey ? 'ok' : 'warn', s.apiKey ? 'modo direto · chave local' : 'modo direto · sem chave');
+      return;
+    }
+    var h = await NB.api.health(s);
+    if (h && h.ok) {
+      serverKeyReady = !!h.keyConfigured;
+      if (h.keyConfigured) {
+        NB.UI.setApiStatus('ok', 'proxy ok · chave no servidor');
+        NB.UI.log('ok', 'servidor proxy ativo · chave ' + (h.keyMasked || 'configurada'));
+      } else {
+        NB.UI.setApiStatus('warn', 'proxy sem ANTHROPIC_API_KEY');
+        NB.UI.log('warn', 'proxy no ar, mas sem chave: preencha ANTHROPIC_API_KEY no .env e reinicie.');
+        if (!quiet) NB.UI.toast('O proxy está no ar, mas falta a chave no .env do servidor.', 'warn', 6000);
+      }
+    } else {
+      serverKeyReady = false;
+      NB.UI.setApiStatus('err', 'proxy inacessível');
+      if (!healthChecked) {
+        NB.UI.log('warn', 'proxy não encontrado (' + (h.detail || '') + '). Rode "npm start" ou use o modo direto com sua chave.');
+      }
+      if (!quiet && !healthChecked) {
+        NB.UI.toast('Servidor proxy não encontrado. Rode "npm start" ou abra as configurações e use o modo direto.', 'warn', 7000);
+      }
+    }
+    healthChecked = true;
+  }
+
+  async function testApi() {
+    var out = el.testApiOut;
+    out.className = 'test-out';
+    out.textContent = 'testando…';
+    el.btnTestApi.disabled = true;
+
+    try {
+      var read;
+      try {
+        read = NB.UI.readSettings();
+      } catch (e) {
+        read = null;
+      }
+      var cfg = Object.assign({}, store.state, read ? read.patch : {});
+      var proxy = (cfg.proxyBase || '').replace(/\/+$/, '');
+      var target = cfg.apiMode === 'proxy' ? proxy + '/api/health' : 'https://api.anthropic.com/v1/messages';
+
+      if (cfg.apiMode === 'proxy') {
+        var h = await NB.api.health(cfg);
+        if (!h.ok) throw new Error('proxy inacessível: ' + (h.detail || 'sem resposta'));
+        if (!h.keyConfigured) throw new Error('proxy no ar, mas sem ANTHROPIC_API_KEY no .env');
+        out.className = 'test-out ok';
+        out.textContent = 'proxy ok · chave ' + (h.keyMasked || 'configurada');
+        NB.UI.setApiStatus('ok', 'proxy ok · chave no servidor');
+        return;
+      }
+
+      if (!cfg.apiKey) throw new Error('informe a chave para o modo direto');
+      var res = await NB.api.create(cfg, {
+        model: cfg.model,
+        max_tokens: 16,
+        messages: [{ role: 'user', content: 'Responda apenas: ok' }]
+      });
+      var txt = (res.content || []).filter(function (b) {
+        return b.type === 'text';
+      })[0];
+      out.className = 'test-out ok';
+      out.textContent = 'conexão ok · ' + (txt ? txt.text.slice(0, 30) : 'resposta vazia');
+      NB.UI.setApiStatus('ok', 'API respondendo · ' + cfg.model);
+    } catch (err) {
+      out.className = 'test-out err';
+      out.textContent = err.message || String(err);
+      NB.UI.setApiStatus('err', 'falha na conexão');
+      NB.UI.log('error', 'teste de conexão: ' + (err.message || err));
+    } finally {
+      el.btnTestApi.disabled = false;
+    }
+  }
+
+  /* --------------------------------------------------------------- start */
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+
+  global.addEventListener('beforeunload', function () {
+    if (speech) speech.destroy();
+    if (demo) demo.stop();
+    NB.Pip.close();
+  });
+
+  NB.app = {
+    store: store,
+    pipeline: pipeline,
+    speech: function () {
+      return speech;
+    },
+    checkHealth: checkHealth
+  };
+})(window);

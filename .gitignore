@@ -1,0 +1,12 @@
+# segredos
+.env
+.env.local
+
+# dependências
+node_modules/
+
+# artefatos locais
+*.log
+.DS_Store
+.tmp-*/
+coverage/

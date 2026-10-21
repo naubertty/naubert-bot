@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>naubert-bot · checagem ao vivo de debate</title>
+<meta name="description" content="Transcreve o debate ao vivo, separa afirmações checáveis de opiniões e verifica cada uma com busca restrita a veículos de imprensa.">
+<link rel="stylesheet" href="assets/css/app.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0f14'/%3E%3Ccircle cx='16' cy='16' r='8' fill='none' stroke='%2300e07a' stroke-width='2.5'/%3E%3Cpath d='M12 16.5l3 3 5-6.5' fill='none' stroke='%2300e07a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+</head>
+<body>
+<div class="app">
+
+  <!-- ============================================================ topbar -->
+  <header class="bar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <circle cx="16" cy="16" r="12" fill="none" stroke="currentColor" stroke-width="2"/>
+        <path d="M10.5 16.4l3.6 3.6L21.5 12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div class="brand-text">
+        <strong>naubert-bot</strong>
+        <span>checagem ao vivo</span>
+      </div>
+    </div>
+
+    <div class="bar-status">
+      <span class="status-item"><i class="dot" id="apiDot"></i><span id="apiLabel">API não verificada</span></span>
+      <span class="status-item"><i class="dot" id="micDot"></i><span id="micLabel">microfone parado</span></span>
+      <span class="status-item mono" id="clock">--:--:--</span>
+    </div>
+
+    <div class="bar-actions">
+      <button id="btnStart" class="btn btn-primary" type="button">
+        <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M8 1.5a2.5 2.5 0 0 0-2.5 2.5v4a2.5 2.5 0 0 0 5 0V4A2.5 2.5 0 0 0 8 1.5Z" fill="currentColor"/><path d="M4 7.5v.5a4 4 0 0 0 8 0v-.5" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/><path d="M8 12v2.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <span>Iniciar escuta</span>
+      </button>
+      <button id="btnDemo" class="btn" type="button">Simulação</button>
+      <button id="btnSettings" class="btn btn-ghost" type="button">Configurações</button>
+      <button id="btnExport" class="btn btn-ghost" type="button">Exportar</button>
+    </div>
+  </header>
+
+  <!-- ============================================================ layout -->
+  <main class="layout">
+
+    <!-- ---------------------------------------------------------- palco -->
+    <section class="stage">
+      <div class="video-frame" id="videoFrame" data-tone="idle">
+        <div class="video-media" id="videoMedia"></div>
+        <div class="video-tint" aria-hidden="true"></div>
+        <div class="video-scan" aria-hidden="true"></div>
+        <div class="video-grid" aria-hidden="true"></div>
+
+        <div class="frame-top">
+          <span class="live"><i></i> AO VIVO</span>
+          <div class="frame-tools">
+            <span class="frame-source" id="frameSource">fonte do vídeo não definida</span>
+            <button class="frame-btn" id="btnPip" type="button" hidden
+                    title="Abre o veredito em uma janela flutuante que fica sobre outros aplicativos">janela flutuante</button>
+          </div>
+        </div>
+
+        <!-- cartão de veredito sobre o vídeo -->
+        <div class="flash" id="flash" aria-live="polite">
+          <div class="flash-empty">
+            <span class="fe-kicker">em espera</span>
+            <p>Inicie a escuta ou rode a simulação.<br>O primeiro veredito aparece aqui.</p>
+          </div>
+        </div>
+
+        <div class="frame-bottom">
+          <div class="timeline" id="timeline" aria-label="últimos vereditos"></div>
+          <span class="hold-indicator" id="holdIndicator" hidden></span>
+        </div>
+      </div>
+
+      <!-- ------------------------------------------------------ transcrição -->
+      <div class="transcript">
+        <div class="transcript-head">
+          <span class="kicker">transcrição</span>
+          <span class="t-meta" id="tMeta">aguardando microfone</span>
+          <div class="t-actions">
+            <button id="btnFlush" class="btn btn-tiny" type="button" title="Fechar a janela atual e checar agora">checar janela</button>
+            <button id="btnManual" class="btn btn-tiny" type="button">entrada manual</button>
+            <button id="btnClearTranscript" class="btn btn-tiny" type="button">limpar</button>
+          </div>
+        </div>
+        <div class="transcript-body" id="transcriptBody">
+          <span class="t-final" id="tFinal"></span><span class="t-interim" id="tInterim"></span>
+          <span class="t-caret" id="tCaret"></span>
+        </div>
+        <form class="manual" id="manualForm" hidden>
+          <input id="manualInput" type="text" placeholder="Cole aqui o que acabou de ser dito e pressione Enter" autocomplete="off" spellcheck="false">
+          <button class="btn btn-tiny" type="submit">enviar</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- ----------------------------------------------------------- rail -->
+    <aside class="rail">
+      <div class="rail-head">
+        <div class="rail-title">
+          <span>checagens</span>
+          <span class="rail-count mono" id="railCount">0</span>
+        </div>
+        <div class="filters" id="filters">
+          <button class="chip is-on" data-filter="all" type="button">todas</button>
+          <button class="chip" data-filter="FALSO" type="button"><i class="swatch false"></i>falso</button>
+          <button class="chip" data-filter="VERDADEIRO" type="button"><i class="swatch true"></i>verdadeiro</button>
+          <button class="chip" data-filter="outros" type="button">outros</button>
+        </div>
+      </div>
+
+      <div class="rail-list" id="railList">
+        <div class="rail-empty" id="railEmpty">
+          <p class="re-title">Nenhuma checagem ainda</p>
+          <p class="re-body">As afirmações checáveis aparecem aqui assim que a triagem as separa das opiniões. Cada cartão mostra o veículo, a matéria e se a fonte foi confirmada na busca restrita.</p>
+          <button class="btn btn-tiny" id="btnDemoEmpty" type="button">rodar simulação</button>
+        </div>
+      </div>
+
+      <div class="rail-foot">
+        <div class="usage">
+          <div class="usage-item"><span id="uCalls">0</span><small>chamadas</small></div>
+          <div class="usage-item"><span id="uSearches">0</span><small>buscas</small></div>
+          <div class="usage-item"><span id="uCost">US$ 0,00</span><small>custo est.</small></div>
+          <div class="usage-item"><span id="uLatency">—</span><small>latência</small></div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- ------------------------------------------------------------ console -->
+  <footer class="console" id="console">
+    <button class="console-toggle" id="consoleToggle" type="button" aria-expanded="false">
+      <span class="kicker">log do pipeline</span>
+      <span class="console-hint" id="consoleHint">triagem → busca restrita → auditoria de fontes</span>
+      <span class="console-caret">▾</span>
+    </button>
+    <div class="console-body" id="consoleBody" hidden></div>
+  </footer>
+</div>
+
+<!-- ============================================================= settings -->
+<dialog id="settings" class="settings">
+  <form method="dialog" id="settingsForm">
+    <header class="settings-head">
+      <div>
+        <h2>Configurações</h2>
+        <p>Chave, modelo, veículos permitidos e comportamento da checagem.</p>
+      </div>
+      <button class="icon-btn" id="btnCloseSettings" value="close" type="button" aria-label="Fechar">✕</button>
+    </header>
+
+    <div class="settings-body">
+
+      <section class="fieldset">
+        <h3>Conexão com a API</h3>
+        <p class="help">O modo proxy mantém a chave no servidor (<code>server.js</code>) e evita expor segredo no navegador. O modo direto é só para teste local.</p>
+
+        <div class="row">
+          <label class="field">
+            <span>Modo</span>
+            <select id="f-apiMode">
+              <option value="proxy">Proxy local (recomendado)</option>
+              <option value="direct">Direto do navegador (teste)</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Endereço do proxy</span>
+            <input id="f-proxyBase" type="text" placeholder="vazio = mesma origem" spellcheck="false">
+          </label>
+        </div>
+
+        <div class="row" id="rowApiKey" hidden>
+          <label class="field field-wide">
+            <span>Chave da API (fica no navegador)</span>
+            <input id="f-apiKey" type="password" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+          </label>
+        </div>
+
+        <div class="row">
+          <label class="field">
+            <span>Token do proxy (opcional)</span>
+            <input id="f-proxyToken" type="password" placeholder="só se você definiu PROXY_TOKEN" autocomplete="off" spellcheck="false">
+          </label>
+          <label class="field">
+            <span>Modelo da checagem</span>
+            <select id="f-model"></select>
+          </label>
+          <label class="field">
+            <span>Modelo da triagem</span>
+            <select id="f-triageModel"></select>
+          </label>
+        </div>
+
+        <div class="row">
+          <label class="field">
+            <span>Header beta (opcional)</span>
+            <input id="f-betaHeader" type="text" placeholder="ex.: structured-outputs-2025-11-13" spellcheck="false">
+          </label>
+          <label class="field">
+            <span>Raciocínio</span>
+            <select id="f-thinkingVerify">
+              <option value="adaptive">adaptativo na checagem</option>
+              <option value="none">desligado</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="row row-actions">
+          <button class="btn btn-tiny" id="btnTestApi" type="button">testar conexão</button>
+          <span class="test-out" id="testApiOut"></span>
+        </div>
+      </section>
+
+      <section class="fieldset">
+        <h3>Busca restrita</h3>
+        <p class="help">A lista vira o parâmetro <code>allowed_domains</code>. Domínio puro, sem <code>https://</code>. Subdomínios entram automaticamente; subcaminhos são aceitos.</p>
+
+        <div class="row">
+          <label class="field">
+            <span>Versão da ferramenta</span>
+            <select id="f-searchTool"></select>
+          </label>
+          <label class="field">
+            <span>Máximo de buscas por afirmação</span>
+            <input id="f-maxUses" type="number" min="1" max="15" step="1">
+          </label>
+        </div>
+
+        <div class="presets" id="presets"></div>
+
+        <label class="field field-wide">
+          <span>Veículos permitidos <b id="domainCount" class="mono">0</b></span>
+          <textarea id="f-domains" rows="7" spellcheck="false" placeholder="g1.globo.com&#10;folha.uol.com.br"></textarea>
+        </label>
+        <p class="help help-warn" id="domainWarn" hidden></p>
+
+        <details class="advanced">
+          <summary>Localização usada na busca</summary>
+          <div class="row">
+            <label class="field"><span>Cidade</span><input id="f-locCity" type="text"></label>
+            <label class="field"><span>Estado</span><input id="f-locRegion" type="text"></label>
+            <label class="field"><span>País</span><input id="f-locCountry" type="text" maxlength="2"></label>
+            <label class="field"><span>Fuso</span><input id="f-locTz" type="text"></label>
+          </div>
+        </details>
+      </section>
+
+      <section class="fieldset">
+        <h3>Ritmo da checagem</h3>
+        <p class="help">Janelas menores chegam mais rápido, mas gastam mais chamadas e perdem contexto.</p>
+        <div class="row">
+          <label class="field">
+            <span>Fechar janela a cada <b id="chunkCharsVal" class="mono">260</b> caracteres</span>
+            <input id="f-chunkChars" type="range" min="120" max="600" step="20">
+          </label>
+          <label class="field">
+            <span>Ou a cada <b id="chunkSecondsVal" class="mono">30</b> segundos</span>
+            <input id="f-chunkSeconds" type="range" min="10" max="90" step="5">
+          </label>
+        </div>
+        <div class="row">
+          <label class="field">
+            <span>Checagens simultâneas</span>
+            <select id="f-concurrency">
+              <option value="1">1 · mais conservador</option>
+              <option value="2">2 · padrão</option>
+              <option value="3">3 · mais rápido</option>
+              <option value="4">4 · agressivo</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Checar afirmações até prioridade</span>
+            <select id="f-minPriority">
+              <option value="1">1 · só as centrais</option>
+              <option value="2">2 · centrais e relevantes</option>
+              <option value="3">3 · todas</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Idioma da transcrição</span>
+            <select id="f-lang">
+              <option value="pt-BR">português (Brasil)</option>
+              <option value="pt-PT">português (Portugal)</option>
+              <option value="es-ES">espanhol</option>
+              <option value="en-US">inglês</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section class="fieldset">
+        <h3>Vídeo do debate</h3>
+        <p class="help">A Globo Play não permite incorporar o player em outra página. Cole o link do YouTube (ou de outra fonte com embed liberado) — ou deixe o debate aberto na Globo Play e use o botão <b>janela flutuante</b> para manter o veredito sobre o vídeo.</p>
+        <label class="field field-wide">
+          <span>Link do vídeo</span>
+          <input id="f-videoUrl" type="url" placeholder="https://www.youtube.com/watch?v=..." spellcheck="false">
+        </label>
+        <div class="row">
+          <label class="field">
+            <span>Como exibir</span>
+            <select id="f-videoMode">
+              <option value="embed">incorporado nesta tela</option>
+              <option value="external">abrir em outra janela</option>
+              <option value="off">sem vídeo (só painel)</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Força do duotone <b id="duotoneVal" class="mono">85%</b></span>
+            <input id="f-duotoneStrength" type="range" min="0" max="100" step="5">
+          </label>
+          <label class="field">
+            <span>Duração do duotone <b id="duotoneHoldVal" class="mono">14</b>s</span>
+            <input id="f-duotoneHold" type="range" min="4" max="40" step="2">
+          </label>
+        </div>
+        <label class="switch">
+          <input id="f-autoDuotone" type="checkbox">
+          <span>Pintar o vídeo automaticamente a cada veredito</span>
+        </label>
+      </section>
+
+      <section class="fieldset">
+        <h3>Como isto funciona — e o que não faz</h3>
+        <p class="help">
+          A fala é transcrita pela Web Speech API do Chrome (o áudio é processado pelos servidores do Google).
+          A cada janela, o Claude separa afirmações checáveis de opiniões, previsões e promessas. Só as checáveis
+          seguem para a busca, restrita por <code>allowed_domains</code> aos veículos da sua lista.
+        </p>
+        <p class="help">
+          A auditoria confere se cada URL citada apareceu de fato nos resultados da busca. Se nenhuma fonte passar,
+          o veredito é rebaixado para <b>não verificado</b> — o sistema não afirma verdade nem mentira sem fonte.
+        </p>
+        <p class="help help-warn">
+          Isto é uma ferramenta de apoio, não uma checagem publicável. Há atraso de segundos entre a fala e o veredito,
+          a transcrição erra nomes e números, e o modelo pode interpretar mal a fonte. Confira a matéria antes de
+          divulgar qualquer conclusão.
+        </p>
+      </section>
+
+    </div>
+
+    <footer class="settings-foot">
+      <button class="btn btn-ghost" id="btnResetSettings" type="button">restaurar padrões</button>
+      <span class="save-note" id="saveNote"></span>
+      <button class="btn btn-primary" id="btnSaveSettings" value="save" type="submit">salvar</button>
+    </footer>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="assets/js/config.js"></script>
+<script src="assets/js/outlets.js"></script>
+<script src="assets/js/store.js"></script>
+<script src="assets/js/anthropic.js"></script>
+<script src="assets/js/audit.js"></script>
+<script src="assets/js/pipeline.js"></script>
+<script src="assets/js/speech.js"></script>
+<script src="assets/js/pip.js"></script>
+<script src="assets/js/demo.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

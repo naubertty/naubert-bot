@@ -1,0 +1,24 @@
+{
+  "name": "naubert-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Checagem de fatos ao vivo de debates: transcrição no navegador, triagem de afirmações e verificação com busca restrita a veículos de imprensa.",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.mjs",
+    "check": "for f in server.js assets/js/*.js; do node --check \"$f\" || exit 1; done && node --test test/*.test.mjs"
+  },
+  "keywords": [
+    "fact-checking",
+    "debate",
+    "web-speech-api",
+    "claude",
+    "anthropic",
+    "jornalismo"
+  ],
+  "license": "UNLICENSED"
+}
