@@ -872,3 +872,26 @@ select { appearance: none; cursor: pointer; background-image: linear-gradient(45
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* ======================================================== aviso de crédito */
+
+.credit-banner {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  margin: 0 0 2px;
+  padding: 10px 14px;
+  border-radius: var(--r-md);
+  border: 1px solid rgba(255, 107, 107, .38);
+  background: linear-gradient(90deg, rgba(255, 107, 107, .13), rgba(255, 107, 107, .04));
+}
+.credit-banner-body { display: flex; flex-direction: column; gap: 2px; min-width: 260px; flex: 1; }
+.credit-banner-body b { font-size: 12.5px; color: #ffb3b3; }
+.credit-banner-body span { font-size: 11.5px; color: var(--text-dim); line-height: 1.45; }
+.credit-banner-body code { font-family: var(--mono); font-size: 11px; }
+.credit-banner-actions { display: flex; gap: 6px; align-items: center; }
+.credit-banner a.btn { text-decoration: none; }
+.credit-banner.is-ok {
+  border-color: rgba(74, 214, 161, .35);
+  background: linear-gradient(90deg, rgba(74, 214, 161, .11), rgba(74, 214, 161, .03));
+}
+.credit-banner.is-ok .credit-banner-body b { color: #9fe8cd; }

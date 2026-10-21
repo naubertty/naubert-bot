@@ -600,6 +600,13 @@
         latencia: Date.now() - started,
         concluidaEm: Date.now()
       });
+      // Sem crédito ou chave inválida: parar a fila inteira em vez de gastar
+      // uma tentativa por afirmação para receber o mesmo 402.
+      if (err.status === 402 || err.status === 401) {
+        this.aborted = true;
+        this.queue = [];
+        this.emit('blocked', { message: err.message || String(err), status: err.status });
+      }
       this.emit('error', { claim: claim, error: err });
       this.emit('result', failed);
       return failed;

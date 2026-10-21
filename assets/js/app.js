@@ -42,6 +42,11 @@
       btnDemoEmpty: $('btnDemoEmpty'),
       btnPip: $('btnPip'),
       btnMicTest: $('btnMicTest'),
+      creditBanner: $('creditBanner'),
+      creditBannerTitle: $('creditBannerTitle'),
+      creditBannerText: $('creditBannerText'),
+      btnCheckCredits: $('btnCheckCredits'),
+      btnDismissCredit: $('btnDismissCredit'),
       micMeter: $('micMeter'),
       micLevel: $('micLevel')
     };
@@ -60,6 +65,7 @@
     }
 
     checkHealth(true);
+    if (typeof checkCredits === 'function') setTimeout(function () { checkCredits(true); }, 1200);
   }
 
   /* -------------------------------------------------------------- speech */
@@ -284,8 +290,21 @@
       NB.UI.log('warn', w.message);
     });
 
+    tabAudio.on('fatal', function (e) {
+      NB.UI.log('error', e.message);
+      stopListening();
+      showCreditBanner(
+        e.status === 402 ? 'Sem créditos no OpenRouter' : 'Chave do OpenRouter recusada',
+        e.message + ' A transcrição e as checagens param até isso ser resolvido.'
+      );
+      NB.UI.toast(e.message, 'err', 15000);
+    });
+
     tabAudio.on('error', function (e) {
       NB.UI.log('error', e.message);
+      if (/402|crédito|cr[eé]dito/i.test(e.message)) {
+        showCreditBanner('Sem créditos no OpenRouter', e.message);
+      }
       NB.UI.toast(e.message, 'err', 9000);
     });
 
@@ -317,6 +336,54 @@
     } catch (err) {
       NB.UI.log('error', 'captura de aba recusada: ' + (err.message || err));
       NB.UI.toast(err.message || String(err), 'err', 12000);
+    }
+  }
+
+  /* --------------------------------------------------------- crédito */
+
+  function showCreditBanner(title, text, kind) {
+    if (!el.creditBanner) return;
+    el.creditBanner.hidden = false;
+    el.creditBanner.classList.toggle('is-ok', kind === 'ok');
+    el.creditBannerTitle.textContent = title;
+    el.creditBannerText.textContent = text;
+  }
+
+  function hideCreditBanner() {
+    if (el.creditBanner) el.creditBanner.hidden = true;
+  }
+
+  /** Consulta /api/v1/key: uso do dia/mês e, se a chave tem teto, o que resta. */
+  async function checkCredits(quiet) {
+    try {
+      var data = await NB.api.keyInfo(store.state);
+      var parts = [];
+      if (data.limitRemaining != null) parts.push('resta US$ ' + Number(data.limitRemaining).toFixed(2) + ' do limite da chave');
+      if (data.usage != null) parts.push('usado US$ ' + Number(data.usage).toFixed(2) + ' no total');
+      if (data.usageDaily != null) parts.push('US$ ' + Number(data.usageDaily).toFixed(2) + ' hoje');
+      if (!parts.length) parts.push('chave válida; o OpenRouter não informou limite nem uso');
+
+      var exhausted = data.limitRemaining != null && Number(data.limitRemaining) <= 0;
+      if (exhausted) {
+        showCreditBanner(
+          'O limite desta chave acabou',
+          'OpenRouter: ' + parts.join(' · ') + '. Ajuste o limite da chave ou adicione crédito em openrouter.ai/credits.'
+        );
+        NB.UI.log('warn', 'saldo · ' + parts.join(' · '));
+        return false;
+      }
+      NB.UI.log('ok', 'saldo · ' + parts.join(' · '));
+      if (!quiet) {
+        NB.UI.toast('OpenRouter: ' + parts.join(' · ') + '.', data.is_free_tier ? 'warn' : null, 9000);
+      }
+      if (el.creditBanner && !el.creditBanner.hidden && el.creditBanner.classList.contains('is-ok') === false) {
+        hideCreditBanner();
+      }
+      return true;
+    } catch (err) {
+      NB.UI.log('warn', 'não deu para consultar o saldo: ' + (err.message || err));
+      if (!quiet) NB.UI.toast('Não deu para consultar o saldo: ' + (err.message || err), 'err', 8000);
+      return null;
     }
   }
 
@@ -420,6 +487,16 @@
 
     pipeline.on('error', function (p) {
       NB.UI.log('error', 'falha na checagem: ' + (p.error && p.error.message));
+    });
+
+    // 402/401 param a fila inteira: avisa uma vez, sem repetir por afirmação.
+    pipeline.on('blocked', function (b) {
+      showCreditBanner(
+        b.status === 402 ? 'Sem créditos no OpenRouter' : 'Chave do OpenRouter recusada',
+        b.message + ' A fila foi interrompida para não repetir a mesma falha em cada afirmação.'
+      );
+      NB.UI.toast(b.message, 'err', 15000);
+      if (isListening()) stopListening();
     });
 
     pipeline.on('usage', function (u) {
@@ -528,6 +605,8 @@
 
     el.btnTestApi.addEventListener('click', testApi);
     if (el.btnMicTest) el.btnMicTest.addEventListener('click', testMic);
+    if (el.btnCheckCredits) el.btnCheckCredits.addEventListener('click', function () { checkCredits(false); });
+    if (el.btnDismissCredit) el.btnDismissCredit.addEventListener('click', hideCreditBanner);
     var btnList = $('btnListModels');
     if (btnList) btnList.addEventListener('click', listModels);
 

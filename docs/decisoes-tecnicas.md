@@ -281,3 +281,23 @@ mudou: a única diferença é que o texto entrou pelo Whisper e não pela Web Sp
 disco em nenhum momento: o `Blob` morre depois do envio. O modelo padrão é o Whisper 1, a US$ 0,0001 por
 segundo — US$ 0,0006 por trecho de 6 s. O `usage.cost` da resposta, quando vem, tem prioridade sobre a
 estimativa da tabela.
+
+## 15. 402 não é erro de código
+
+O primeiro teste real do usuário com captura de aba devolveu `402 — Insufficient credits`. A tentação é
+tratar como falha técnica e seguir tentando; o certo é parar e dizer o que fazer.
+
+Três decisões:
+
+1. **consultar o saldo antes**, em `GET /api/v1/key` (não gasta crédito). O endpoint devolve uso do dia,
+   da semana, do mês e — se a chave tiver teto — o quanto resta. Se `limit_remaining` for zero, o aviso
+   aparece no boot, antes de qualquer tentativa;
+2. **402 e 401 param tudo**: a captura de áudio encerra e a fila de checagens é esvaziada (`aborted`),
+   porque cada trecho ou afirmação seguinte receberia o mesmo erro. Um `emit('blocked')` avisa a interface
+   uma única vez;
+3. **a mensagem é específica**, lendo `error.metadata.limit_source` do OpenRouter:
+   `openrouter_key_limit` (teto da chave) e `openrouter_in_flight_budget` (gasto simultâneo) pedem ações
+   diferentes de saldo zerado na conta.
+
+A faixa no topo tem o link direto e um botão para consultar o saldo de novo — o usuário não precisa
+descobrir o caminho no console.

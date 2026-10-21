@@ -470,6 +470,26 @@ prefere o `usage.cost` que o OpenRouter devolve em cada resposta.
 
 ---
 
+## Se o OpenRouter responder 402
+
+O 402 é falta de dinheiro, não bug: a conta está sem saldo, ou a **própria chave** tem um teto de gasto já
+esgotado. Enquanto isso não é resolvido, **nada funciona** — nem a transcrição, nem a triagem, nem a busca.
+Não há camada gratuita equivalente: a busca na web e a transcrição são cobradas.
+
+O app trata isso de frente:
+
+- consulta `GET /api/v1/key` no boot (não gasta crédito) e mostra o uso do dia/mês; se a chave tiver teto,
+  mostra o que resta;
+- quando uma chamada devolve 402, aparece uma **faixa vermelha no topo** com o motivo e o link para
+  recarregar;
+- a **fila de checagens e a captura de áudio param** em vez de repetir o mesmo erro a cada afirmação/trecho;
+- o botão **consultar saldo** repete a consulta a qualquer momento.
+
+Para resolver: [openrouter.ai/credits](https://openrouter.ai/credits) → adicionar crédito (cartão ou cripto,
+mínimo de US$ 5). US$ 5 cobrem cerca de 100 afirmações checadas com Opus 5.5 ou ~14 horas de transcrição com
+Whisper 1. Se a mensagem citar *limite da chave*, o problema é o teto configurado em
+[openrouter.ai/workspaces/default/keys](https://openrouter.ai/workspaces/default/keys), não o saldo da conta.
+
 ## Segurança e privacidade
 
 - **A chave da API fica no servidor.** O modo padrão é o proxy (`server.js`), que guarda
@@ -559,7 +579,7 @@ substituir o checador.
 | “proxy inacessível” | servidor parado | `npm start` na raiz do projeto |
 | “proxy sem chave” | `.env` ausente ou em outra pasta | veja o caminho impresso pelo servidor, copie `.env.example` para lá, preencha e reinicie |
 | 401 | chave inválida | gere outra em openrouter.ai/workspaces/default/keys e reinicie o servidor |
-| 402 | créditos insuficientes no OpenRouter | recarregue em openrouter.ai/credits ou use modelo mais barato |
+| 402 | créditos insuficientes (ou teto da própria chave esgotado) | o app mostra a faixa vermelha no topo e **para a fila** em vez de repetir o erro. Clique em **consultar saldo** para ver o uso; adicione crédito em [openrouter.ai/credits](https://openrouter.ai/credits). Se a mensagem falar em *limite da chave*, ajuste o teto da chave em [keys](https://openrouter.ai/workspaces/default/keys) |
 | 404 “no endpoints found” | slug de modelo errado ou sem endpoint compatível | clique em **listar modelos** e copie o slug exato |
 | 400 “web_search / tool” | modelo sem suporte a server tools | o sistema repete com o plugin `web`; se persistir, troque de modelo ou engine |
 | 400 em `response_format` | endpoint sem structured outputs | o sistema repete sem schema automaticamente |

@@ -274,6 +274,12 @@
       }
       this.emit('text', { text: text, seconds: seconds, usage: res && res.usage });
     } catch (err) {
+      // 402/401 não adianta repetir a cada trecho: o problema é a conta.
+      if (err.status === 402 || err.status === 401) {
+        this.emit('fatal', { message: err.message || String(err), status: err.status });
+        this.stop();
+        return;
+      }
       this.emit('error', { message: 'Transcrição do trecho falhou: ' + (err.message || err) });
     }
   };

@@ -63,9 +63,15 @@
         : 'Chave da Anthropic recusada (401). Confira ANTHROPIC_API_KEY no .env e reinicie o servidor.';
     }
     if (status === 402) {
-      return isOR
-        ? 'Créditos insuficientes no OpenRouter (402). Recarregue a conta em openrouter.ai/credits.'
-        : 'Créditos insuficientes na conta da Anthropic (402).';
+      if (!isOR) return 'Créditos insuficientes na conta da Anthropic (402).';
+      var source = (err.metadata && err.metadata.limit_source) || '';
+      if (source === 'openrouter_key_limit') {
+        return 'O limite de gasto desta chave do OpenRouter acabou (402). Ajuste o limite da chave em openrouter.ai/workspaces/default/keys ou use outra chave.';
+      }
+      if (source === 'openrouter_in_flight_budget') {
+        return 'Limite de gasto simultâneo do OpenRouter atingido (402). Espere alguns segundos e tente de novo.';
+      }
+      return 'Sem créditos no OpenRouter (402). Adicione saldo em openrouter.ai/credits — sem isso nem a transcrição nem as checagens rodam.';
     }
     if (status === 403) {
       if (/moderation|guardrail/i.test(raw)) return 'A requisição foi bloqueada pela moderação do provedor: ' + raw;
@@ -175,6 +181,32 @@
      */
     transcribe: async function (cfg, body, signal) {
       return send(transcribeUrl(cfg), cfg, 'openrouter', body, signal);
+    },
+
+    /** Saldo/limite da chave do OpenRouter (não gasta crédito). */
+    keyInfo: async function (cfg, signal) {
+      var url =
+        cfg.apiMode === 'proxy'
+          ? base(cfg) + '/api/openrouter/key'
+          : OR_BASE + '/key';
+      var headers =
+        cfg.apiMode === 'proxy'
+          ? headersFor(cfg, 'openrouter')
+          : { authorization: 'Bearer ' + (cfg.openrouterKey || '') };
+      var res = await fetch(url, { headers: headers, signal: signal || null });
+      var text = await res.text();
+      var data = null;
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch (e) {
+        data = null;
+      }
+      if (!res.ok) {
+        var error = new Error(friendlyError(res.status, data || text, 'openrouter'));
+        error.status = res.status;
+        throw error;
+      }
+      return data || {};
     },
 
     friendlyError: friendlyError,

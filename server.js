@@ -435,6 +435,38 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Saldo e limites da chave: /api/v1/key não custa crédito e responde na hora.
+    if (pathname === '/api/openrouter/key') {
+      if (!checkToken(req)) {
+        apiError(res, 401, 'authentication_error', 'Token do proxy inválido.');
+        return;
+      }
+      if (!OPENROUTER_API_KEY) {
+        apiError(res, 500, 'configuration_error', 'OPENROUTER_API_KEY não configurada no servidor.');
+        return;
+      }
+      try {
+        const upstream = await fetch(OPENROUTER_BASE + '/key', {
+          headers: { authorization: 'Bearer ' + OPENROUTER_API_KEY },
+        });
+        const raw = await upstream.json().catch(() => ({}));
+        const d = raw.data || {};
+        json(res, upstream.status, {
+          ok: upstream.ok,
+          label: d.label || '',
+          limit: d.limit == null ? null : d.limit,
+          limitRemaining: d.limit_remaining == null ? null : d.limit_remaining,
+          usage: d.usage == null ? null : d.usage,
+          usageDaily: d.usage_daily == null ? null : d.usage_daily,
+          usageMonthly: d.usage_monthly == null ? null : d.usage_monthly,
+          freeTier: !!d.is_free_tier,
+        });
+      } catch (err) {
+        apiError(res, 502, 'upstream_error', 'Não foi possível consultar o saldo: ' + err.message);
+      }
+      return;
+    }
+
     // Transcrição (STT): captura de aba, áudio enviado em base64.
     if (pathname === '/api/openrouter/transcribe') {
       if (req.method !== 'POST') {
