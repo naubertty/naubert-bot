@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#17231b" />
+    <meta name="description" content="Painel local para organizar downloads de músicas com spotDL." />
+    <title>Sonora Studio · Painel spotDL</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Navegação principal">
+        <a class="brand" href="#inicio" aria-label="Sonora Studio, início">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 40 40" fill="none">
+              <path d="M8 23.5V16.5M15 29V11M22 24.5V15.5M29 32V8M36 23V17" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" />
+            </svg>
+          </span>
+          <span class="brand-type">sonora<span>STUDIO</span></span>
+        </a>
+
+        <div class="sidebar-label">ESPAÇO DE TRABALHO</div>
+        <nav class="side-nav">
+          <a class="nav-link active" href="#inicio">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4zM14 4h6v4h-6zM14 11h6v9h-6zM4 14h7v6H4z" /></svg>
+            <span>Painel</span>
+          </a>
+          <a class="nav-link" href="#fila">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10" /><circle cx="18" cy="18" r="2" /></svg>
+            <span>Fila de downloads</span>
+            <span class="nav-count" id="navPending">0</span>
+          </a>
+          <a class="nav-link" href="#configuracao">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="m19.4 15 .1.1 1.1.9-1.5 2.6-1.4-.6a7.7 7.7 0 0 1-1.4.8l-.2 1.5h-3l-.2-1.5a7.7 7.7 0 0 1-1.4-.8l-1.4.6-1.5-2.6 1.1-.9a7.1 7.1 0 0 1 0-1.6l-1.1-.9 1.5-2.6 1.4.6a7.7 7.7 0 0 1 1.4-.8l.2-1.5h3l.2 1.5a7.7 7.7 0 0 1 1.4.8l1.4-.6 1.5 2.6-1.1.9a7.1 7.1 0 0 1 0 1.6Z" transform="translate(-1 -1)" /></svg>
+            <span>Configuração</span>
+          </a>
+        </nav>
+
+        <div class="sidebar-spacer"></div>
+        <div class="sidebar-note">
+          <div class="note-disc" aria-hidden="true"><span></span><span></span><span></span></div>
+          <div>
+            <strong>Sua biblioteca local</strong>
+            <p>Organizada, com capa e metadados.</p>
+          </div>
+        </div>
+        <div class="sidebar-footer">
+          <span class="live-indicator" id="connectionDot"></span>
+          <span>Servidor local</span>
+          <span class="footer-status" id="connectionLabel">conectando</span>
+        </div>
+      </aside>
+
+      <main class="main-content" id="inicio">
+        <header class="topbar">
+          <div class="crumbs"><span>SONORA</span><span class="crumb-slash">/</span><strong>ESTÚDIO</strong></div>
+          <div class="topbar-right">
+            <span class="local-chip"><span></span> PAINEL LOCAL</span>
+            <span class="topbar-date" id="todayLabel">SUA MÚSICA, DO SEU JEITO</span>
+          </div>
+        </header>
+
+        <section class="hero" aria-labelledby="heroTitle">
+          <div class="hero-copy">
+            <div class="eyebrow"><span class="eyebrow-line"></span> COLEÇÃO PESSOAL · SPOTDL</div>
+            <h1 id="heroTitle">O som que você ama,<br /><em>do seu jeito.</em></h1>
+            <p>Monte sua biblioteca offline a partir de faixas, álbuns e playlists — com capa e metadados organizados.</p>
+            <a class="hero-link" href="#adicionar">Adicionar música <span aria-hidden="true">↗</span></a>
+          </div>
+          <div class="hero-art" aria-label="Ilustração de capas de álbum e ondas sonoras" role="img">
+            <div class="art-sun"></div>
+            <div class="art-orbit art-orbit-one"></div>
+            <div class="art-orbit art-orbit-two"></div>
+            <div class="art-cover">
+              <div class="cover-top"><span>STUDIO<br />SESSION 01</span><span class="cover-star">✳</span></div>
+              <div class="cover-wave" aria-hidden="true">
+                <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+              </div>
+              <div class="cover-bottom"><strong>PLAY<br />IT<br />AGAIN</strong><span>VOL. 01<br />2026</span></div>
+            </div>
+            <div class="art-caption"><span class="caption-dot"></span> SUA PRÓXIMA FAIXA COMEÇA AQUI</div>
+            <div class="art-small-disc" aria-hidden="true"><span></span></div>
+          </div>
+          <div class="hero-footnote"><span>01</span><span>SPOTIFY LINK → ARQUIVO COM METADADOS</span></div>
+        </section>
+
+        <section class="stats-grid" aria-label="Resumo da fila">
+          <article class="stat-card">
+            <div class="stat-icon icon-queue" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7" /><circle cx="18" cy="17" r="3" /><path d="m17 17 1 1 2-2" /></svg></div>
+            <div><span class="stat-label">NA FILA</span><strong id="queuedCount">0</strong></div>
+            <span class="stat-trail">Aguardando</span>
+          </article>
+          <article class="stat-card">
+            <div class="stat-icon icon-active" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 4v16l13-8L6 4Z" /></svg></div>
+            <div><span class="stat-label">EM ANDAMENTO</span><strong id="runningCount">0</strong></div>
+            <span class="stat-trail">Processando</span>
+          </article>
+          <article class="stat-card">
+            <div class="stat-icon icon-done" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" /></svg></div>
+            <div><span class="stat-label">CONCLUÍDOS</span><strong id="completedCount">0</strong></div>
+            <span class="stat-trail">Nesta sessão</span>
+          </article>
+          <article class="stat-card destination-stat">
+            <div class="stat-icon icon-folder" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" /></svg></div>
+            <div class="destination-copy"><span class="stat-label">DESTINO DOS ARQUIVOS</span><strong id="destinationLabel">./downloads</strong></div>
+            <span class="folder-arrow" aria-hidden="true">↘</span>
+          </article>
+        </section>
+
+        <div class="workspace-grid">
+          <section class="panel-card download-card" id="adicionar" aria-labelledby="downloadTitle">
+            <div class="card-heading">
+              <div class="heading-group">
+                <span class="section-number">01</span>
+                <div><h2 id="downloadTitle">Adicionar à fila</h2><p>Um link é tudo que você precisa.</p></div>
+              </div>
+              <span class="spotify-tag"><span class="spotify-mark">●</span> SPOTIFY</span>
+            </div>
+
+            <form id="downloadForm" novalidate>
+              <label for="spotifyUrl">Link da faixa, álbum ou playlist</label>
+              <div class="url-field" id="urlField">
+                <svg class="link-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.1 0l3-3A5 5 0 0 0 13 2.9l-1.7 1.7" /><path d="M14 11a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7" /></svg>
+                <input id="spotifyUrl" name="url" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://open.spotify.com/playlist/..." required aria-describedby="urlHint urlError" />
+                <button class="clear-input" id="clearUrl" type="button" aria-label="Limpar link" title="Limpar">×</button>
+              </div>
+              <div class="field-hints"><span id="urlHint">Aceitamos links HTTPS e URIs Spotify de faixas, álbuns e playlists.</span><span class="field-error" id="urlError" role="alert"></span></div>
+
+              <div class="options-row">
+                <div class="select-field">
+                  <label for="audioFormat">FORMATO</label>
+                  <div class="select-wrap">
+                    <select id="audioFormat" name="format">
+                      <option value="mp3">MP3</option>
+                      <option value="m4a">M4A</option>
+                      <option value="flac">FLAC</option>
+                      <option value="opus">OPUS</option>
+                      <option value="ogg">OGG</option>
+                      <option value="wav">WAV</option>
+                    </select>
+                    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 6 5 5 5-5" /></svg>
+                  </div>
+                </div>
+                <div class="select-field">
+                  <label for="bitrate">QUALIDADE</label>
+                  <div class="select-wrap">
+                    <select id="bitrate" name="bitrate">
+                      <option value="auto">Automática · recomendada</option>
+                      <option value="128k">128 kbps</option>
+                      <option value="192k">192 kbps</option>
+                      <option value="320k">320 kbps</option>
+                    </select>
+                    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 6 5 5 5-5" /></svg>
+                  </div>
+                </div>
+              </div>
+              <p class="quality-hint">A taxa escolhida define a conversão final; não aumenta a qualidade do áudio de origem.</p>
+
+              <button class="submit-button" id="submitButton" type="submit" disabled>
+                <span id="submitLabel">Verificando integração…</span>
+                <span class="button-arrow" aria-hidden="true">↗</span>
+              </button>
+              <p class="metadata-note"><span aria-hidden="true">✳</span> Capa do álbum e metadados serão incorporados ao arquivo pelo spotDL.</p>
+            </form>
+          </section>
+
+          <aside class="panel-card integration-card" id="configuracao" aria-labelledby="integrationTitle">
+            <div class="card-heading integration-heading">
+              <div class="heading-group">
+                <span class="section-number">02</span>
+                <div><h2 id="integrationTitle">Integração</h2><p>Componentes necessários para baixar.</p></div>
+              </div>
+              <span class="integration-light" id="integrationLight" aria-label="Verificando estado"></span>
+            </div>
+
+            <div class="tool-list">
+              <div class="tool-row">
+                <div class="tool-symbol spotdl-symbol" aria-hidden="true"><span>SD</span></div>
+                <div class="tool-copy"><strong>spotDL</strong><span id="spotdlDetail">Verificando instalação…</span></div>
+                <span class="tool-state waiting" id="spotdlState">—</span>
+              </div>
+              <div class="tool-row">
+                <div class="tool-symbol ffmpeg-symbol" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4v16M5 12h7M12 5v14M12 8h7M12 16h7" /></svg></div>
+                <div class="tool-copy"><strong>FFmpeg</strong><span>Necessário para conversão e tags.</span></div>
+                <span class="tool-state waiting" id="ffmpegState">—</span>
+              </div>
+              <div class="tool-row">
+                <div class="tool-symbol deno-symbol" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 8 4v10l-8 4-8-4V7l8-4Z" /><path d="m8.5 12 2.3 2.3 4.8-5" /></svg></div>
+                <div class="tool-copy"><strong>Deno</strong><span>Recomendado para algumas fontes.</span></div>
+                <span class="tool-state waiting" id="denoState">—</span>
+              </div>
+            </div>
+
+            <div class="integration-footer" id="integrationFooter">
+              <div class="integration-message" id="integrationMessage">Consultando o ambiente local…</div>
+              <button class="prepare-button" id="prepareButton" type="button" hidden>Preparar ferramentas <span aria-hidden="true">↗</span></button>
+              <div class="install-hint" id="installHint" hidden>
+                <span>Primeiro, instale as dependências:</span>
+                <code>python -m pip install -r requirements.txt</code>
+              </div>
+            </div>
+          </aside>
+        </div>
+
+        <section class="panel-card queue-card" id="fila" aria-labelledby="queueTitle">
+          <div class="queue-heading">
+            <div class="heading-group">
+              <span class="section-number">03</span>
+              <div><h2 id="queueTitle">Fila de downloads</h2><p id="queueSubtitle">Acompanhe cada arquivo em tempo real.</p></div>
+            </div>
+            <button class="refresh-button" id="refreshButton" type="button" aria-label="Atualizar fila" title="Atualizar fila">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5" /><path d="M5.6 9a7 7 0 0 1 11.8-2L20 12M4 12l2.6 5a7 7 0 0 0 11.8-2" /></svg>
+              <span>Atualizar</span>
+            </button>
+          </div>
+          <div class="queue-columns" aria-hidden="true"><span>ITEM</span><span>FORMATO</span><span>STATUS</span><span>ADICIONADO</span></div>
+          <div class="job-list" id="jobList" aria-live="polite" aria-busy="true">
+            <div class="empty-state">
+              <div class="empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg></div>
+              <strong>Carregando sua fila…</strong>
+              <span>Já vamos atualizar o painel.</span>
+            </div>
+          </div>
+        </section>
+
+        <footer class="page-footer">
+          <span>SONORA STUDIO <span class="footer-separator">·</span> INTERFACE LOCAL PARA SPOTDL</span>
+          <span>Use apenas conteúdo que você tem autorização para baixar. Não afiliado ao Spotify.</span>
+        </footer>
+      </main>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>
