@@ -16,7 +16,7 @@ Painel em português para enfileirar faixas, álbuns e playlists do Spotify pelo
 
 ## Requisitos
 
-- Python 3.10 ou superior.
+- Python 3.10 a 3.14. spotDL 4.5.2 ainda não é compatível com Python 3.15; recomendamos Python 3.14 ou 3.13.
 - Acesso à internet para instalar dependências e baixar os recursos de FFmpeg/Deno.
 - FFmpeg (obrigatório para conversão e gravação de tags). Deno é recomendado pelo spotDL para algumas fontes do YouTube.
 
@@ -31,16 +31,18 @@ Painel em português para enfileirar faixas, álbuns e playlists do Spotify pelo
 
 Abra <http://localhost:8765>.
 
-O instalador cria um ambiente virtual, instala spotDL e prepara FFmpeg e Deno. Se preferir instalar manualmente:
+O instalador seleciona uma versão compatível do Python, cria o ambiente virtual, instala spotDL e prepara FFmpeg. Deno é tentado como etapa opcional/recomendada. Se preferir instalar manualmente, use Python 3.14 (ou 3.13):
 
 ```bash
-python3 -m venv .venv
+python3.14 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 python -m spotdl --download-ffmpeg
-python -m spotdl --download-deno  # recomendado
+python -m spotdl --download-deno  # opcional, recomendado
 python server.py
 ```
+
+Se `pip` disser que não há versão compatível do spotDL, confira `python --version`: Python 3.15 ainda não é suportado. No Windows, o `setup.ps1` procura automaticamente uma instalação de Python 3.14 a 3.10 via launcher `py`; uma `.venv` antiga incompatível será recriada.
 
 ### Windows (PowerShell)
 
@@ -49,7 +51,7 @@ python server.py
 .\.venv\Scripts\python.exe server.py
 ```
 
-Depois, acesse <http://localhost:8765>.
+O instalador usa `py` para escolher a versão compatível mais recente. Se você tiver apenas Python 3.15, instale Python 3.14 (ou 3.13) e rode `setup.ps1` novamente. Depois, acesse <http://localhost:8765>.
 
 ## Configuração
 

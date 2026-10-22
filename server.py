@@ -143,12 +143,21 @@ def get_health() -> dict[str, Any]:
     except ValueError:
         display_output_dir = str(OUTPUT_DIR)
 
+    python_supported = (3, 10) <= sys.version_info[:2] < (3, 15)
+    setup_command = (
+        "powershell -ExecutionPolicy Bypass -File .\\setup.ps1"
+        if platform.system() == "Windows"
+        else "bash setup.sh"
+    )
     return {
         "spotdl_installed": prefix is not None,
         "spotdl_version": version,
+        "python_version": platform.python_version(),
+        "python_supported": python_supported,
+        "setup_command": setup_command,
         "ffmpeg_installed": ffmpeg_ready,
         "deno_installed": deno_ready,
-        "can_download": prefix is not None and ffmpeg_ready,
+        "can_download": prefix is not None and ffmpeg_ready and python_supported,
         "output_dir": display_output_dir,
     }
 
@@ -252,6 +261,10 @@ class DownloadManager:
 
     def enqueue_download(self, spotify_url: str, audio_format: str, bitrate: str) -> dict[str, Any]:
         health = get_health()
+        if not health["python_supported"]:
+            raise RuntimeError(
+                f"Python {health['python_version']} não é compatível com spotDL 4.5.2. Use Python 3.14 ou 3.13."
+            )
         if not health["spotdl_installed"]:
             raise RuntimeError("spotDL não está instalado. Instale as dependências primeiro.")
         if not health["ffmpeg_installed"]:
@@ -264,7 +277,12 @@ class DownloadManager:
         )
 
     def enqueue_prepare(self) -> dict[str, Any]:
-        if not get_health()["spotdl_installed"]:
+        health = get_health()
+        if not health["python_supported"]:
+            raise RuntimeError(
+                f"Python {health['python_version']} não é compatível com spotDL 4.5.2. Use Python 3.14 ou 3.13."
+            )
+        if not health["spotdl_installed"]:
             raise RuntimeError("Instale o spotDL primeiro usando as instruções desta página.")
         return self._enqueue("prepare")
 

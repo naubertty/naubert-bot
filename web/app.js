@@ -24,6 +24,8 @@ const elements = {
   integrationMessage: document.getElementById('integrationMessage'),
   prepareButton: document.getElementById('prepareButton'),
   installHint: document.getElementById('installHint'),
+  installHintText: document.getElementById('installHintText'),
+  installHintCommand: document.getElementById('installHintCommand'),
   refreshButton: document.getElementById('refreshButton'),
   queueSubtitle: document.getElementById('queueSubtitle'),
   jobList: document.getElementById('jobList'),
@@ -54,7 +56,11 @@ function updateHealth(health) {
   elements.destinationLabel.textContent = health.output_dir || './downloads';
   elements.destinationLabel.title = health.output_dir || './downloads';
 
-  if (health.spotdl_installed) {
+  const unsupportedPython = health.python_supported === false;
+  if (unsupportedPython) {
+    elements.spotdlDetail.textContent = `Python ${health.python_version || ''} não suportado`;
+    setToolState(elements.spotdlState, 'bad', 'PYTHON');
+  } else if (health.spotdl_installed) {
     elements.spotdlDetail.textContent = health.spotdl_version
       ? `Versão ${health.spotdl_version} · pronta`
       : 'Instalação encontrada';
@@ -81,12 +87,20 @@ function updateHealth(health) {
     health.can_download ? 'Integração pronta' : 'Configuração necessária',
   );
 
-  if (!health.spotdl_installed) {
-    elements.integrationMessage.textContent = 'O painel está ativo. Instale o spotDL para habilitar a fila de downloads.';
+  if (!health.spotdl_installed || unsupportedPython) {
+    if (unsupportedPython) {
+      elements.integrationMessage.textContent = `Python ${health.python_version} não é compatível com spotDL 4.5.2. Instale Python 3.14 ou 3.13 e refaça o ambiente.`;
+      elements.installHintText.textContent = 'Depois de instalar Python 3.14/3.13, rode o instalador:';
+      elements.submitLabel.textContent = 'Use Python 3.14 ou 3.13';
+    } else {
+      elements.integrationMessage.textContent = 'O painel está ativo. Instale o spotDL para habilitar a fila de downloads.';
+      elements.installHintText.textContent = 'Execute o instalador incluído no projeto:';
+      elements.submitLabel.textContent = 'Instale o spotDL para continuar';
+    }
+    elements.installHintCommand.textContent = health.setup_command || 'bash setup.sh';
     elements.installHint.hidden = false;
     elements.prepareButton.hidden = true;
     elements.submitButton.disabled = true;
-    elements.submitLabel.textContent = 'Instale o spotDL para continuar';
   } else if (!health.ffmpeg_installed) {
     elements.integrationMessage.textContent = 'O FFmpeg é necessário para converter áudio e gravar os metadados.';
     elements.installHint.hidden = true;
