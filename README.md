@@ -10,9 +10,10 @@ Painel em português para enfileirar faixas, álbuns e playlists do Spotify pelo
 - Fila local para links de faixas, álbuns e playlists.
 - Escolha de formato (MP3, M4A, FLAC, OGG, OPUS ou WAV) e qualidade.
 - Capa e metadados incorporados pelo spotDL; arquivos organizados por artista e álbum.
+- Biblioteca pesquisável com os áudios já baixados, capas, artista, álbum e tamanho do arquivo.
 - Registro por tarefa e indicadores de spotDL, FFmpeg e Deno.
 - Preparação de FFmpeg e Deno pelo próprio painel quando spotDL já estiver instalado.
-- API validada, fila serial, sem shell para executar URLs, e destino configurável.
+- API validada, fila serial, sem shell para executar URLs, e destino configurável com preferência persistente.
 
 ## Requisitos
 
@@ -55,7 +56,9 @@ O instalador usa `py` para escolher a versão compatível mais recente. Se você
 
 ## Configuração
 
-Por padrão, os arquivos ficam na pasta `downloads/` deste projeto. Para alterar o destino, defina `SPOTDL_OUTPUT_DIR` antes de iniciar o painel:
+Por padrão, os arquivos ficam na pasta `downloads/` deste projeto. No painel, clique no cartão **Destino dos arquivos** ou em **Configuração** para informar outra pasta. O caminho pode ser absoluto (por exemplo, `C:\Users\SeuNome\Music\Spotify` no Windows) ou relativo ao projeto. A preferência é salva localmente em `.sonora-settings.json` e continua valendo após reiniciar o servidor. A biblioteca exibe os arquivos de áudio da pasta atual; trocar o destino afeta apenas novos downloads e não move os arquivos antigos.
+
+Se preferir, você também pode fixar o destino com `SPOTDL_OUTPUT_DIR` antes de iniciar o painel. Quando essa variável está definida, a edição pelo painel fica bloqueada:
 
 ```bash
 SPOTDL_OUTPUT_DIR="$HOME/Music" .venv/bin/python server.py

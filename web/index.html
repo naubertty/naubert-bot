@@ -33,10 +33,15 @@
             <span>Fila de downloads</span>
             <span class="nav-count" id="navPending">0</span>
           </a>
-          <a class="nav-link" href="#configuracao">
+          <a class="nav-link" href="#biblioteca">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5v-16Z" /><path d="M4 5.5v16M8 7h8M8 11h8" /></svg>
+            <span>Biblioteca</span>
+            <span class="nav-count" id="libraryCount">0</span>
+          </a>
+          <button class="nav-link" id="navConfigButton" type="button">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="m19.4 15 .1.1 1.1.9-1.5 2.6-1.4-.6a7.7 7.7 0 0 1-1.4.8l-.2 1.5h-3l-.2-1.5a7.7 7.7 0 0 1-1.4-.8l-1.4.6-1.5-2.6 1.1-.9a7.1 7.1 0 0 1 0-1.6l-1.1-.9 1.5-2.6 1.4.6a7.7 7.7 0 0 1 1.4-.8l.2-1.5h3l.2 1.5a7.7 7.7 0 0 1 1.4.8l1.4-.6 1.5 2.6-1.1.9a7.1 7.1 0 0 1 0 1.6Z" transform="translate(-1 -1)" /></svg>
             <span>Configuração</span>
-          </a>
+          </button>
         </nav>
 
         <div class="sidebar-spacer"></div>
@@ -103,11 +108,11 @@
             <div><span class="stat-label">CONCLUÍDOS</span><strong id="completedCount">0</strong></div>
             <span class="stat-trail">Nesta sessão</span>
           </article>
-          <article class="stat-card destination-stat">
-            <div class="stat-icon icon-folder" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" /></svg></div>
-            <div class="destination-copy"><span class="stat-label">DESTINO DOS ARQUIVOS</span><strong id="destinationLabel">./downloads</strong></div>
+          <button class="stat-card destination-stat" id="openDestinationSettings" type="button" aria-label="Alterar pasta de downloads">
+            <span class="stat-icon icon-folder" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" /></svg></span>
+            <span class="destination-copy"><span class="stat-label">DESTINO DOS ARQUIVOS · CLIQUE PARA ALTERAR</span><strong id="destinationLabel">./downloads</strong></span>
             <span class="folder-arrow" aria-hidden="true">↘</span>
-          </article>
+          </button>
         </section>
 
         <div class="workspace-grid">
@@ -226,12 +231,66 @@
           </div>
         </section>
 
+        <section class="panel-card library-card" id="biblioteca" aria-labelledby="libraryTitle">
+          <div class="library-heading">
+            <div class="heading-group">
+              <span class="section-number">04</span>
+              <div><h2 id="libraryTitle">Minha biblioteca</h2><p id="librarySubtitle">Músicas já salvas na pasta selecionada.</p></div>
+            </div>
+            <div class="library-actions">
+              <label class="library-search" for="librarySearch">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3" /><path d="m16 16 4.2 4.2" /></svg>
+                <input id="librarySearch" type="search" aria-label="Buscar música, artista ou álbum na biblioteca" placeholder="Buscar música, artista ou álbum" autocomplete="off" />
+              </label>
+              <button class="refresh-button" id="libraryRefreshButton" type="button" aria-label="Atualizar biblioteca" title="Atualizar biblioteca">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5" /><path d="M5.6 9a7 7 0 0 1 11.8-2L20 12M4 12l2.6 5a7 7 0 0 0 11.8-2" /></svg>
+                <span>Atualizar</span>
+              </button>
+              <button class="library-config-button" id="librarySettingsButton" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" /></svg>
+                Pasta de downloads
+              </button>
+            </div>
+          </div>
+          <div class="library-location"><span>PASTA ATUAL</span><strong id="libraryLocation">downloads</strong><span class="library-location-note">A alteração vale para os próximos downloads; não move arquivos antigos.</span></div>
+          <div class="library-grid" id="libraryGrid" aria-live="polite" aria-busy="true">
+            <div class="library-loading"><strong>Carregando sua biblioteca…</strong><span>Procurando arquivos na pasta atual.</span></div>
+          </div>
+          <div class="library-empty empty-state" id="libraryEmpty" hidden>
+            <div class="empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg></div>
+            <strong id="libraryEmptyTitle">Nenhuma música nesta pasta ainda</strong>
+            <span id="libraryEmptyText">Quando um download terminar, ele aparecerá aqui com a capa e os metadados.</span>
+            <button class="library-config-button" id="emptyLibrarySettingsButton" type="button">Escolher pasta de downloads</button>
+          </div>
+        </section>
+
         <footer class="page-footer">
           <span>SONORA STUDIO <span class="footer-separator">·</span> INTERFACE LOCAL PARA SPOTDL</span>
           <span>Use apenas conteúdo que você tem autorização para baixar. Não afiliado ao Spotify.</span>
         </footer>
       </main>
     </div>
+    <dialog class="settings-dialog" id="settingsDialog" aria-labelledby="settingsTitle">
+      <form id="settingsForm">
+        <div class="dialog-topline"><span class="section-number">⚙</span><button class="dialog-close" id="closeSettingsButton" type="button" aria-label="Fechar configuração">×</button></div>
+        <p class="eyebrow dialog-eyebrow"><span class="eyebrow-line"></span> SUA BIBLIOTECA LOCAL</p>
+        <h2 id="settingsTitle">Onde salvar sua música?</h2>
+        <p class="dialog-intro">Escolha a pasta onde o spotDL organizará os próximos downloads por artista e álbum.</p>
+        <label class="settings-label" for="outputDirInput">CAMINHO DA PASTA</label>
+        <div class="settings-path-field">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" /></svg>
+          <input id="outputDirInput" name="output_dir" type="text" autocomplete="off" spellcheck="false" placeholder="C:\Users\SeuNome\Music\Spotify" />
+        </div>
+        <p class="settings-help" id="settingsHelp">Pode usar um caminho completo, como <code>D:\Musicas\Spotify</code>. A pasta será criada se ainda não existir.</p>
+        <div class="settings-current"><span>DESTINO ATUAL</span><strong id="settingsCurrentDir">downloads</strong></div>
+        <div class="settings-notice" id="settingsNotice">Arquivos já baixados permanecem na pasta antiga; mudar o destino não os move.</div>
+        <div class="settings-error" id="settingsError" role="alert"></div>
+        <div class="dialog-actions">
+          <button class="reset-path-button" id="resetDestinationButton" type="button">Usar pasta padrão</button>
+          <button class="save-path-button" id="saveSettingsButton" type="submit">Salvar destino</button>
+        </div>
+      </form>
+    </dialog>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
   </body>
 </html>

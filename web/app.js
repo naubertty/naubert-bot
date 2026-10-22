@@ -7,6 +7,7 @@ const elements = {
   runningCount: document.getElementById('runningCount'),
   completedCount: document.getElementById('completedCount'),
   navPending: document.getElementById('navPending'),
+  libraryCount: document.getElementById('libraryCount'),
   downloadForm: document.getElementById('downloadForm'),
   spotifyUrl: document.getElementById('spotifyUrl'),
   urlField: document.getElementById('urlField'),
@@ -29,12 +30,40 @@ const elements = {
   refreshButton: document.getElementById('refreshButton'),
   queueSubtitle: document.getElementById('queueSubtitle'),
   jobList: document.getElementById('jobList'),
+  librarySubtitle: document.getElementById('librarySubtitle'),
+  libraryLocation: document.getElementById('libraryLocation'),
+  libraryGrid: document.getElementById('libraryGrid'),
+  libraryEmpty: document.getElementById('libraryEmpty'),
+  libraryEmptyTitle: document.getElementById('libraryEmptyTitle'),
+  libraryEmptyText: document.getElementById('libraryEmptyText'),
+  librarySearch: document.getElementById('librarySearch'),
+  libraryRefreshButton: document.getElementById('libraryRefreshButton'),
+  librarySettingsButton: document.getElementById('librarySettingsButton'),
+  emptyLibrarySettingsButton: document.getElementById('emptyLibrarySettingsButton'),
+  settingsDialog: document.getElementById('settingsDialog'),
+  settingsForm: document.getElementById('settingsForm'),
+  outputDirInput: document.getElementById('outputDirInput'),
+  settingsCurrentDir: document.getElementById('settingsCurrentDir'),
+  settingsHelp: document.getElementById('settingsHelp'),
+  settingsNotice: document.getElementById('settingsNotice'),
+  settingsError: document.getElementById('settingsError'),
+  saveSettingsButton: document.getElementById('saveSettingsButton'),
+  closeSettingsButton: document.getElementById('closeSettingsButton'),
+  resetDestinationButton: document.getElementById('resetDestinationButton'),
+  navConfigButton: document.getElementById('navConfigButton'),
+  openDestinationSettings: document.getElementById('openDestinationSettings'),
   toast: document.getElementById('toast'),
 };
 
 let currentHealth = null;
 let toastTimeout = null;
 let jobsRefreshing = false;
+let libraryRefreshing = false;
+let libraryRefreshPending = false;
+let libraryItems = [];
+let libraryTotal = 0;
+let libraryTruncated = false;
+let lastCompletedSignature = null;
 
 function showToast(message, isError = false) {
   elements.toast.textContent = message;
@@ -55,6 +84,18 @@ function updateHealth(health) {
   elements.connectionDot.classList.add('connected');
   elements.destinationLabel.textContent = health.output_dir || './downloads';
   elements.destinationLabel.title = health.output_dir || './downloads';
+  elements.libraryLocation.textContent = health.output_dir || './downloads';
+  elements.settingsCurrentDir.textContent = health.output_dir || './downloads';
+  const destinationLocked = Boolean(health.output_dir_locked);
+  elements.outputDirInput.disabled = destinationLocked;
+  elements.saveSettingsButton.disabled = destinationLocked;
+  elements.resetDestinationButton.disabled = destinationLocked;
+  elements.settingsHelp.textContent = destinationLocked
+    ? 'O destino está fixado pela variável de ambiente SPOTDL_OUTPUT_DIR.'
+    : 'Informe um caminho completo ou relativo ao projeto. A pasta será criada se ainda não existir.';
+  elements.settingsNotice.textContent = destinationLocked
+    ? 'Altere SPOTDL_OUTPUT_DIR no terminal para mudar o destino.'
+    : 'Arquivos já baixados permanecem na pasta antiga; mudar o destino não os move.';
 
   const unsupportedPython = health.python_supported === false;
   if (unsupportedPython) {
@@ -234,6 +275,13 @@ function renderJobs(jobs) {
   elements.runningCount.textContent = String(running);
   elements.completedCount.textContent = String(completed);
   elements.navPending.textContent = String(queued + running);
+  const completedSignature = downloads
+    .filter((job) => job.status === 'completed')
+    .map((job) => job.id)
+    .sort()
+    .join('|');
+  if (lastCompletedSignature !== null && completedSignature !== lastCompletedSignature) refreshLibrary();
+  lastCompletedSignature = completedSignature;
   elements.queueSubtitle.textContent = jobs.length
     ? `${jobs.length} tarefa${jobs.length === 1 ? '' : 's'} nesta sessão.`
     : 'Acompanhe cada arquivo em tempo real.';
@@ -267,6 +315,113 @@ async function refreshJobs() {
     }
   } finally {
     jobsRefreshing = false;
+  }
+}
+
+function formatBytes(bytes) {
+  const size = Number(bytes) || 0;
+  if (size < 1024) return `${size} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let value = size / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
+}
+
+function createLibraryCard(item) {
+  const card = createElement('article', 'library-item');
+  const art = createElement('div', 'library-art');
+  art.setAttribute('aria-hidden', 'true');
+  const fallback = createElement('div', 'library-art-fallback');
+  fallback.innerHTML = '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>';
+  art.append(fallback);
+  if (item.artwork) {
+    const image = document.createElement('img');
+    image.src = `/api/artwork?path=${encodeURIComponent(item.path)}`;
+    image.alt = '';
+    image.loading = 'lazy';
+    image.onerror = () => image.remove();
+    art.append(image);
+  }
+
+  const title = createElement('h3', '', item.title || 'Faixa sem título');
+  title.title = item.title || '';
+  const artist = createElement('p', 'library-artist', item.artist || 'Artista desconhecido');
+  artist.title = item.artist || '';
+  const albumText = [item.album, item.year].filter(Boolean).join(' · ');
+  const album = createElement('p', 'library-album', albumText || 'Álbum desconhecido');
+  album.title = albumText;
+  const footer = createElement('div', 'library-item-footer');
+  footer.append(
+    createElement('span', 'library-format', item.format || 'AUDIO'),
+    createElement('span', 'library-size', formatBytes(item.size_bytes)),
+  );
+  card.append(art, title, artist, album, footer);
+  return card;
+}
+
+function renderLibrary() {
+  const query = elements.librarySearch.value.trim().toLocaleLowerCase('pt-BR');
+  const visibleItems = libraryItems.filter((item) => {
+    const searchable = `${item.title || ''} ${item.artist || ''} ${item.album || ''}`.toLocaleLowerCase('pt-BR');
+    return !query || searchable.includes(query);
+  });
+
+  elements.libraryGrid.replaceChildren();
+  elements.libraryGrid.setAttribute('aria-busy', 'false');
+  elements.libraryCount.textContent = String(libraryTotal);
+  elements.libraryLocation.textContent = currentHealth?.output_dir || './downloads';
+  elements.librarySubtitle.textContent = libraryTruncated
+    ? `Mostrando as ${visibleItems.length} mais recentes; há mais arquivos nesta pasta.`
+    : `${libraryTotal} arquivo${libraryTotal === 1 ? '' : 's'} de áudio na pasta selecionada.`;
+
+  if (!visibleItems.length) {
+    elements.libraryEmpty.hidden = false;
+    const searchActive = Boolean(query) && libraryTotal > 0;
+    elements.libraryEmptyTitle.textContent = searchActive
+      ? 'Nenhum resultado para essa busca'
+      : 'Nenhuma música nesta pasta ainda';
+    elements.libraryEmptyText.textContent = searchActive
+      ? 'Tente buscar por outro título, artista ou álbum.'
+      : 'Quando um download terminar, ele aparecerá aqui com a capa e os metadados.';
+    elements.emptyLibrarySettingsButton.hidden = searchActive;
+    return;
+  }
+
+  elements.libraryEmpty.hidden = true;
+  for (const item of visibleItems) elements.libraryGrid.append(createLibraryCard(item));
+}
+
+async function refreshLibrary() {
+  if (libraryRefreshing) {
+    libraryRefreshPending = true;
+    return;
+  }
+  libraryRefreshing = true;
+  try {
+    const response = await fetch('/api/library', { cache: 'no-store' });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Não foi possível carregar a biblioteca.');
+    libraryItems = Array.isArray(data.items) ? data.items : [];
+    libraryTotal = Number(data.total) || 0;
+    libraryTruncated = Boolean(data.truncated);
+    renderLibrary();
+  } catch (error) {
+    elements.libraryGrid.setAttribute('aria-busy', 'false');
+    elements.libraryGrid.replaceChildren();
+    elements.libraryEmpty.hidden = false;
+    elements.libraryEmptyTitle.textContent = 'Não foi possível carregar a biblioteca';
+    elements.libraryEmptyText.textContent = error.message || 'Verifique se o servidor está ativo e tente novamente.';
+    elements.emptyLibrarySettingsButton.hidden = true;
+  } finally {
+    libraryRefreshing = false;
+    if (libraryRefreshPending) {
+      libraryRefreshPending = false;
+      refreshLibrary();
+    }
   }
 }
 
@@ -359,6 +514,50 @@ async function prepareTools() {
   }
 }
 
+function openSettingsDialog() {
+  elements.settingsError.textContent = '';
+  elements.outputDirInput.value = currentHealth?.output_dir || 'downloads';
+  elements.settingsCurrentDir.textContent = currentHealth?.output_dir || 'downloads';
+  elements.navConfigButton.classList.add('active');
+  if (typeof elements.settingsDialog.showModal === 'function') {
+    if (!elements.settingsDialog.open) elements.settingsDialog.showModal();
+  } else {
+    elements.settingsDialog.setAttribute('open', '');
+  }
+}
+
+async function saveSettings(event) {
+  event.preventDefault();
+  const value = elements.outputDirInput.value.trim();
+  if (!value) {
+    elements.settingsError.textContent = 'Informe o caminho da pasta.';
+    elements.outputDirInput.focus();
+    return;
+  }
+  elements.settingsError.textContent = '';
+  elements.saveSettingsButton.disabled = true;
+  elements.saveSettingsButton.textContent = 'Salvando…';
+  try {
+    const response = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ output_dir: value }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Não foi possível salvar essa pasta.');
+    elements.librarySearch.value = '';
+    await refreshHealth();
+    await refreshLibrary();
+    elements.settingsDialog.close();
+    showToast(`Destino atualizado: ${data.output_dir}`);
+  } catch (error) {
+    elements.settingsError.textContent = error.message || 'Erro ao salvar o destino.';
+  } finally {
+    elements.saveSettingsButton.textContent = 'Salvar destino';
+    elements.saveSettingsButton.disabled = Boolean(currentHealth?.output_dir_locked);
+  }
+}
+
 elements.downloadForm.addEventListener('submit', submitDownload);
 elements.spotifyUrl.addEventListener('input', () => setFieldError(''));
 elements.clearUrl.addEventListener('click', () => {
@@ -371,6 +570,29 @@ elements.refreshButton.addEventListener('click', () => {
   refreshJobs();
   refreshHealth();
 });
+elements.libraryRefreshButton.addEventListener('click', refreshLibrary);
+elements.librarySearch.addEventListener('input', renderLibrary);
+elements.navConfigButton.addEventListener('click', openSettingsDialog);
+elements.openDestinationSettings.addEventListener('click', openSettingsDialog);
+elements.librarySettingsButton.addEventListener('click', openSettingsDialog);
+elements.emptyLibrarySettingsButton.addEventListener('click', openSettingsDialog);
+elements.closeSettingsButton.addEventListener('click', () => elements.settingsDialog.close());
+elements.resetDestinationButton.addEventListener('click', () => {
+  elements.outputDirInput.value = 'downloads';
+  elements.settingsError.textContent = '';
+  elements.outputDirInput.focus();
+});
+elements.settingsForm.addEventListener('submit', saveSettings);
+elements.settingsDialog.addEventListener('close', () => elements.navConfigButton.classList.remove('active'));
+elements.settingsDialog.addEventListener('click', (event) => {
+  if (event.target === elements.settingsDialog) elements.settingsDialog.close();
+});
+document.querySelectorAll('.side-nav .nav-link[href]').forEach((link) => {
+  link.addEventListener('click', () => {
+    document.querySelectorAll('.side-nav .nav-link').forEach((item) => item.classList.remove('active'));
+    link.classList.add('active');
+  });
+});
 
 const today = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })
   .format(new Date())
@@ -380,5 +602,7 @@ elements.todayLabel.textContent = today;
 
 refreshHealth();
 refreshJobs();
+refreshLibrary();
 window.setInterval(refreshJobs, 2500);
 window.setInterval(refreshHealth, 15000);
+window.setInterval(refreshLibrary, 12000);

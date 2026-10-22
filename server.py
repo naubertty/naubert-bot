@@ -7,6 +7,7 @@ music folder.
 
 from __future__ import annotations
 
+import base64
 import importlib.metadata
 import importlib.util
 import json
@@ -24,16 +25,20 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit, unquote
+from urllib.parse import parse_qs, unquote, urlsplit
 
 BASE_DIR = Path(__file__).resolve().parent
 WEB_DIR = BASE_DIR / "web"
+SETTINGS_PATH = BASE_DIR / ".sonora-settings.json"
 ALLOWED_FORMATS = {"mp3", "m4a", "flac", "ogg", "opus", "wav"}
 ALLOWED_BITRATES = {"auto", "128k", "192k", "320k"}
+AUDIO_SUFFIXES = {".mp3", ".m4a", ".flac", ".ogg", ".opus", ".wav", ".aac", ".aiff"}
 MAX_BODY_BYTES = 8 * 1024
 MAX_PENDING_JOBS = 30
 MAX_STORED_JOBS = 100
 MAX_LOG_LINES = 100
+MAX_LIBRARY_ITEMS = 200
+MAX_LIBRARY_SCAN = 5000
 SPOTIFY_ID_RE = re.compile(r"^[A-Za-z0-9]{10,64}$")
 SPOTIFY_PATH_RE = re.compile(
     r"^/(?:intl-[A-Za-z0-9-]+/)?(track|playlist|album)/([A-Za-z0-9]{10,64})/?$",
@@ -46,13 +51,65 @@ SPOTIFY_URI_RE = re.compile(
 ANSI_RE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
 
-def configured_output_dir() -> Path:
-    """Return the configured destination, defaulting to ./downloads."""
-    value = os.environ.get("SPOTDL_OUTPUT_DIR", "downloads").strip() or "downloads"
+def _resolve_output_dir(value: str) -> Path:
     path = Path(value).expanduser()
     if not path.is_absolute():
         path = BASE_DIR / path
     return path.resolve()
+
+
+def configured_output_dir() -> Path:
+    """Use env configuration, saved panel settings, or ./downloads in that order."""
+    environment_value = os.environ.get("SPOTDL_OUTPUT_DIR", "").strip()
+    if environment_value:
+        return _resolve_output_dir(environment_value)
+
+    try:
+        saved = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+        saved_value = saved.get("output_dir") if isinstance(saved, dict) else None
+        if isinstance(saved_value, str) and saved_value.strip():
+            return _resolve_output_dir(saved_value)
+    except (OSError, json.JSONDecodeError, ValueError):
+        pass
+    return _resolve_output_dir("downloads")
+
+
+def display_output_dir(path: Path | None = None) -> str:
+    target = (path or OUTPUT_DIR).resolve()
+    try:
+        return str(target.relative_to(BASE_DIR))
+    except ValueError:
+        return str(target)
+
+
+def update_output_dir(value: Any) -> str:
+    """Persist a destination selected in the panel and make it active immediately."""
+    global OUTPUT_DIR
+    if os.environ.get("SPOTDL_OUTPUT_DIR", "").strip():
+        raise RuntimeError("O destino está fixado pela variável SPOTDL_OUTPUT_DIR.")
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("Informe o caminho da pasta de destino.")
+    if len(value) > 2048:
+        raise ValueError("O caminho informado é longo demais.")
+
+    try:
+        target = _resolve_output_dir(value.strip())
+        if target == Path(target.anchor):
+            raise ValueError("Escolha uma pasta dentro do disco, não a raiz do sistema.")
+        target.mkdir(parents=True, exist_ok=True)
+        if not target.is_dir() or not os.access(target, os.W_OK):
+            raise ValueError("A pasta não existe ou não permite gravação.")
+        temp_path = SETTINGS_PATH.with_name(SETTINGS_PATH.name + ".tmp")
+        temp_path.write_text(
+            json.dumps({"output_dir": str(target)}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        temp_path.replace(SETTINGS_PATH)
+    except OSError as exc:
+        raise ValueError(f"Não foi possível usar essa pasta: {exc}") from exc
+
+    OUTPUT_DIR = target
+    return display_output_dir(target)
 
 
 OUTPUT_DIR = configured_output_dir()
@@ -138,11 +195,6 @@ def get_health() -> dict[str, Any]:
 
     ffmpeg_ready = _helper_installed("ffmpeg")
     deno_ready = _helper_installed("deno")
-    try:
-        display_output_dir = str(OUTPUT_DIR.relative_to(BASE_DIR))
-    except ValueError:
-        display_output_dir = str(OUTPUT_DIR)
-
     python_supported = (3, 10) <= sys.version_info[:2] < (3, 15)
     setup_command = (
         "powershell -ExecutionPolicy Bypass -File .\\setup.ps1"
@@ -158,7 +210,8 @@ def get_health() -> dict[str, Any]:
         "ffmpeg_installed": ffmpeg_ready,
         "deno_installed": deno_ready,
         "can_download": prefix is not None and ffmpeg_ready and python_supported,
-        "output_dir": display_output_dir,
+        "output_dir": display_output_dir(OUTPUT_DIR),
+        "output_dir_locked": bool(os.environ.get("SPOTDL_OUTPUT_DIR", "").strip()),
     }
 
 
@@ -274,6 +327,7 @@ class DownloadManager:
             url=spotify_url,
             audio_format=audio_format,
             bitrate=bitrate,
+            download_dir=str(OUTPUT_DIR),
         )
 
     def enqueue_prepare(self) -> dict[str, Any]:
@@ -287,10 +341,11 @@ class DownloadManager:
         return self._enqueue("prepare")
 
     @staticmethod
-    def _public_job(job: dict[str, Any]) -> dict[str, Any]:
+    def _public_job(job: dict[str, Any], include_private: bool = False) -> dict[str, Any]:
         return {
             key: value.copy() if key == "logs" else value
             for key, value in job.items()
+            if include_private or key != "download_dir"
         }
 
     def snapshot(self) -> list[dict[str, Any]]:
@@ -345,7 +400,7 @@ class DownloadManager:
 
     def _run_download(self, job: dict[str, Any]) -> int:
         command = build_download_command(
-            job["url"], job["audio_format"], job["bitrate"], OUTPUT_DIR
+            job["url"], job["audio_format"], job["bitrate"], Path(job.get("download_dir", OUTPUT_DIR))
         )
         return self._run_process(job["id"], command)
 
@@ -381,7 +436,7 @@ class DownloadManager:
                     job["status"] = "running"
                     job["started_at"] = _utc_now()
                     job["logs"].append("Processo iniciado.")
-                    job_copy = self._public_job(job)
+                    job_copy = self._public_job(job, include_private=True)
 
                 try:
                     if job_copy["kind"] == "prepare":
@@ -411,6 +466,195 @@ class DownloadManager:
 
 
 MANAGER = DownloadManager()
+
+
+def _first_tag_text(tags: Any, *keys: str) -> str | None:
+    if not tags:
+        return None
+    for key in keys:
+        try:
+            value = tags.get(key)
+        except (AttributeError, TypeError):
+            value = None
+        if isinstance(value, (list, tuple)):
+            value = next((item for item in value if item), None)
+        if isinstance(value, bytes):
+            value = value.decode("utf-8", errors="replace")
+        if value is not None:
+            text = str(value).strip()
+            if text:
+                return text
+    return None
+
+
+def _image_mime(data: bytes, preferred: str | None = None) -> str:
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    if preferred and preferred.lower().startswith("image/"):
+        return preferred.lower()
+    return "image/jpeg"
+
+
+def extract_artwork(path: Path) -> tuple[bytes, str] | None:
+    """Read embedded album art from common Mutagen formats, with folder-art fallback."""
+    try:
+        from mutagen import File as MutagenFile
+
+        audio = MutagenFile(str(path), easy=False)
+        tags = getattr(audio, "tags", None) if audio is not None else None
+        pictures = getattr(audio, "pictures", None) if audio is not None else None
+        if pictures:
+            picture = pictures[0]
+            data = getattr(picture, "data", None)
+            if data:
+                return bytes(data), _image_mime(bytes(data), getattr(picture, "mime", None))
+
+        if tags is not None:
+            if hasattr(tags, "getall"):
+                for picture in tags.getall("APIC"):
+                    data = getattr(picture, "data", None)
+                    if data:
+                        return bytes(data), _image_mime(bytes(data), getattr(picture, "mime", None))
+
+            covers = tags.get("covr")
+            if covers:
+                cover = covers[0]
+                data = bytes(cover)
+                return data, _image_mime(data)
+
+            encoded_pictures = tags.get("metadata_block_picture")
+            if encoded_pictures:
+                from mutagen.flac import Picture
+
+                encoded = encoded_pictures[0]
+                if isinstance(encoded, str):
+                    picture = Picture(base64.b64decode(encoded))
+                    data = bytes(picture.data)
+                    return data, _image_mime(data, picture.mime)
+
+            legacy_covers = tags.get("coverart")
+            if legacy_covers:
+                encoded = legacy_covers[0]
+                if isinstance(encoded, str):
+                    data = base64.b64decode(encoded)
+                    mime_values = tags.get("coverartmime") or []
+                    preferred = mime_values[0] if mime_values else None
+                    return data, _image_mime(data, preferred)
+    except Exception:
+        # A damaged tag block should not make the entire library unavailable.
+        pass
+
+    for filename in ("cover.jpg", "cover.jpeg", "cover.png", "folder.jpg", "folder.png"):
+        candidate = path.parent / filename
+        try:
+            if candidate.is_file() and candidate.stat().st_size <= 12 * 1024 * 1024:
+                data = candidate.read_bytes()
+                return data, _image_mime(data, mimetypes.guess_type(str(candidate))[0])
+        except OSError:
+            continue
+    return None
+
+
+def _fallback_title(path: Path) -> str:
+    return re.sub(r"^\d{1,3}\s*[-_.]\s*", "", path.stem).strip() or path.stem
+
+
+def _library_metadata(path: Path, root: Path, stat_result: os.stat_result) -> dict[str, Any]:
+    relative = path.relative_to(root)
+    parts = relative.parts
+    fallback_artist = parts[0] if len(parts) > 1 else "Artista desconhecido"
+    fallback_album = parts[1] if len(parts) > 2 else "Álbum desconhecido"
+    title = _fallback_title(path)
+    artist = fallback_artist
+    album = fallback_album
+    year = ""
+
+    try:
+        from mutagen import File as MutagenFile
+
+        audio = MutagenFile(str(path), easy=True)
+        tags = getattr(audio, "tags", None) if audio is not None else None
+        title = _first_tag_text(tags, "title") or title
+        artist = _first_tag_text(tags, "artist", "albumartist") or artist
+        album = _first_tag_text(tags, "album") or album
+        year = _first_tag_text(tags, "date", "originaldate", "year") or ""
+    except Exception:
+        # Mutagen may reject a damaged tag block; path-based fallbacks still work.
+        pass
+
+    return {
+        "path": relative.as_posix(),
+        "title": title,
+        "artist": artist,
+        "album": album,
+        "year": year[:4],
+        "format": path.suffix.lstrip(".").upper(),
+        "size_bytes": stat_result.st_size,
+        "modified_at": datetime.fromtimestamp(stat_result.st_mtime, timezone.utc).isoformat(timespec="seconds"),
+        "artwork": extract_artwork(path) is not None,
+    }
+
+
+def list_library() -> tuple[list[dict[str, Any]], int, bool]:
+    """Return the newest audio files in the configured folder, with their tags."""
+    root = OUTPUT_DIR.resolve()
+    if not root.is_dir():
+        return [], 0, False
+
+    candidates: list[tuple[float, Path, os.stat_result]] = []
+    scanned = 0
+    truncated = False
+    for current, directories, filenames in os.walk(root, onerror=lambda _error: None):
+        directories[:] = [name for name in directories if not name.startswith(".")]
+        for filename in filenames:
+            path = Path(current) / filename
+            if path.suffix.lower() not in AUDIO_SUFFIXES or filename.startswith("."):
+                continue
+            try:
+                resolved = path.resolve(strict=True)
+                if not resolved.is_relative_to(root) or not resolved.is_file():
+                    continue
+                stat_result = resolved.stat()
+            except (OSError, RuntimeError):
+                continue
+            candidates.append((stat_result.st_mtime, resolved, stat_result))
+            scanned += 1
+            if scanned >= MAX_LIBRARY_SCAN:
+                truncated = True
+                break
+        if truncated:
+            break
+
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    items = [
+        _library_metadata(path, root, stat_result)
+        for _modified, path, stat_result in candidates[:MAX_LIBRARY_ITEMS]
+    ]
+    return items, scanned, truncated
+
+
+def safe_library_file(relative_path: Any) -> Path | None:
+    if not isinstance(relative_path, str) or not relative_path or len(relative_path) > 4096:
+        return None
+    relative = Path(relative_path)
+    if relative.is_absolute() or any(part in {".", ".."} for part in relative.parts):
+        return None
+    try:
+        root = OUTPUT_DIR.resolve()
+        target = (root / relative).resolve(strict=True)
+        if not target.is_relative_to(root) or not target.is_file():
+            return None
+        if target.suffix.lower() not in AUDIO_SUFFIXES:
+            return None
+        return target
+    except (OSError, RuntimeError, ValueError):
+        return None
 
 
 class PanelHandler(BaseHTTPRequestHandler):
@@ -467,14 +711,46 @@ class PanelHandler(BaseHTTPRequestHandler):
         return data
 
     def do_GET(self) -> None:  # noqa: N802 - required by BaseHTTPRequestHandler
-        path = urlsplit(self.path).path
+        parsed = urlsplit(self.path)
+        path = parsed.path
         if path == "/api/health":
             self._send_json(get_health())
             return
         if path == "/api/jobs":
             self._send_json({"jobs": MANAGER.snapshot()})
             return
+        if path == "/api/library":
+            items, total, truncated = list_library()
+            self._send_json({
+                "items": items,
+                "total": total,
+                "truncated": truncated,
+                "output_dir": display_output_dir(OUTPUT_DIR),
+            })
+            return
+        if path == "/api/artwork":
+            self._serve_artwork(parsed.query)
+            return
         self._serve_static(path)
+
+    def _serve_artwork(self, query_string: str) -> None:
+        query = parse_qs(query_string, keep_blank_values=True)
+        target = safe_library_file(query.get("path", [""])[0])
+        if target is None:
+            self._send_error_json("Arquivo de áudio não encontrado.", 404)
+            return
+        artwork = extract_artwork(target)
+        if artwork is None:
+            self._send_error_json("Este arquivo não tem capa incorporada.", 404)
+            return
+        data, content_type = artwork
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "private, max-age=3600")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        self.wfile.write(data)
 
     def do_POST(self) -> None:  # noqa: N802 - required by BaseHTTPRequestHandler
         if not self._same_origin_post():
@@ -482,7 +758,7 @@ class PanelHandler(BaseHTTPRequestHandler):
             return
 
         path = urlsplit(self.path).path
-        if path not in {"/api/download", "/api/prepare"}:
+        if path not in {"/api/download", "/api/prepare", "/api/settings"}:
             self._send_error_json("Rota não encontrada.", 404)
             return
 
@@ -505,8 +781,15 @@ class PanelHandler(BaseHTTPRequestHandler):
                 if not isinstance(bitrate, str) or bitrate not in ALLOWED_BITRATES:
                     raise ValueError("Escolha uma qualidade de áudio válida.")
                 job = MANAGER.enqueue_download(spotify_url, audio_format, bitrate)
-            else:
+            elif path == "/api/prepare":
                 job = MANAGER.enqueue_prepare()
+            else:
+                output_dir = update_output_dir(data.get("output_dir"))
+                self._send_json({
+                    "output_dir": output_dir,
+                    "output_dir_locked": False,
+                })
+                return
         except queue.Full:
             self._send_error_json("A fila está cheia. Aguarde um pouco e tente novamente.", 429)
             return

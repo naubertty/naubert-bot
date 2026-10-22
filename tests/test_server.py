@@ -1,3 +1,6 @@
+import json
+import os
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -82,6 +85,78 @@ class SpotdlCommandTests(unittest.TestCase):
         with patch.object(server, "spotdl_prefix", return_value=None):
             with self.assertRaises(RuntimeError):
                 server.build_download_command("https://open.spotify.com/track/1234567890", "mp3", "auto", Path("downloads"))
+
+
+class LibraryTests(unittest.TestCase):
+    def test_lists_audio_files_with_artist_album_and_title_fallbacks(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            audio = root / "Artista" / "Álbum" / "03 - Minha Música.mp3"
+            audio.parent.mkdir(parents=True)
+            audio.write_bytes(b"test audio data")
+            (audio.parent / "not-a-song.txt").write_text("ignore me", encoding="utf-8")
+
+            with patch.object(server, "OUTPUT_DIR", root):
+                items, total, truncated = server.list_library()
+
+            self.assertEqual(total, 1)
+            self.assertFalse(truncated)
+            self.assertEqual(len(items), 1)
+            self.assertEqual(items[0]["title"], "Minha Música")
+            self.assertEqual(items[0]["artist"], "Artista")
+            self.assertEqual(items[0]["album"], "Álbum")
+            self.assertFalse(items[0]["artwork"])
+
+    def test_uses_cover_file_from_album_folder(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            audio = root / "artist" / "album" / "song.mp3"
+            audio.parent.mkdir(parents=True)
+            audio.write_bytes(b"test audio data")
+            cover_bytes = bytes([137]) + b"PNG" + bytes([13, 10, 26, 10]) + b"cover data"
+            (audio.parent / "cover.png").write_bytes(cover_bytes)
+
+            with patch.object(server, "OUTPUT_DIR", root):
+                items, _total, _truncated = server.list_library()
+                artwork = server.extract_artwork(audio)
+
+            self.assertTrue(items[0]["artwork"])
+            self.assertEqual(artwork, (cover_bytes, "image/png"))
+
+    def test_library_file_lookup_rejects_path_traversal(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            audio = root / "artist" / "album" / "song.mp3"
+            audio.parent.mkdir(parents=True)
+            audio.write_bytes(b"test audio data")
+            with patch.object(server, "OUTPUT_DIR", root):
+                self.assertEqual(server.safe_library_file("artist/album/song.mp3"), audio.resolve())
+                self.assertIsNone(server.safe_library_file("../outside.mp3"))
+                self.assertIsNone(server.safe_library_file("artist/album/song.txt"))
+
+    def test_persists_destination_path_from_settings(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            settings_file = root / ".sonora-settings.json"
+            with (
+                patch.object(server, "BASE_DIR", root),
+                patch.object(server, "SETTINGS_PATH", settings_file),
+                patch.object(server, "OUTPUT_DIR", root / "old"),
+                patch.dict(os.environ, {"SPOTDL_OUTPUT_DIR": ""}),
+            ):
+                result = server.update_output_dir("Music/Spotify")
+                self.assertEqual(result, "Music/Spotify")
+                self.assertTrue((root / "Music" / "Spotify").is_dir())
+                self.assertEqual(
+                    json.loads(settings_file.read_text(encoding="utf-8"))["output_dir"],
+                    str(root / "Music" / "Spotify"),
+                )
+                self.assertEqual(server.configured_output_dir(), root / "Music" / "Spotify")
+
+    def test_environment_destination_is_locked(self):
+        with patch.dict(os.environ, {"SPOTDL_OUTPUT_DIR": "C:\\Music"}):
+            with self.assertRaises(RuntimeError):
+                server.update_output_dir("D:\\Other")
 
 
 if __name__ == "__main__":
