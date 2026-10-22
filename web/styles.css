@@ -118,6 +118,8 @@ button { color: inherit; }
 .stat-label { color: #929b93; font-size: 7px; font-weight: 800; letter-spacing: 1px; white-space: nowrap; }
 .stat-card strong { color: #29332c; font-size: 17px; font-weight: 690; line-height: 1; }
 .stat-trail { margin-left: auto; color: #a0a8a1; font-size: 8px; white-space: nowrap; }
+.stat-card.is-active .icon-active { animation: playback-glow 1.2s ease-in-out infinite; }
+.stat-card.is-active .stat-trail { color: #ae8040; font-weight: 700; }
 .destination-copy { overflow: hidden; }
 .destination-copy strong { overflow: hidden; color: #48564a; font-size: 10px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .folder-arrow { margin-left: auto; color: #94a28f; font-size: 16px; }
@@ -213,6 +215,17 @@ button { color: inherit; }
 .job-status.completed { color: #54815b; background: #edf6ed; }.job-status.completed::before { background: #69a575; }
 .job-status.failed { color: #ae5f52; background: #fbefed; }.job-status.failed::before { background: #cb7367; }
 .job-status.queued { color: #73805f; background: #f3f6eb; }.job-status.queued::before { background: #a4ba79; }
+.job-entry.is-running { background: linear-gradient(90deg, rgba(246, 250, 239, .76), rgba(255, 255, 255, 0) 64%); }
+.job-entry.is-running .job-cover { box-shadow: 0 0 0 3px rgba(177, 207, 132, .18); }
+.job-copy .job-live-detail { color: #83945e; font-weight: 650; }
+.download-equalizer { position: relative; z-index: 1; display: flex; height: 16px; align-items: center; gap: 2px; }
+.download-equalizer i { width: 2px; height: 5px; border-radius: 3px; background: currentColor; animation: equalize .7s ease-in-out infinite alternate; }
+.download-equalizer i:nth-child(2) { height: 10px; animation-delay: -.45s; }
+.download-equalizer i:nth-child(3) { height: 14px; animation-delay: -.2s; }
+.download-equalizer i:nth-child(4) { height: 8px; animation-delay: -.55s; }
+.download-equalizer i:nth-child(5) { height: 12px; animation-delay: -.32s; }
+.job-progress { position: relative; height: 3px; margin: 0 12px 10px 56px; overflow: hidden; border-radius: 99px; background: #e8eee2; }
+.job-progress span { position: absolute; top: 0; left: -34%; width: 34%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #a7ce63, #678b4e); animation: download-progress 2.4s ease-in-out infinite; }
 .job-date { color: #9ca59d; font-size: 8px; white-space: nowrap; }
 .job-details { margin: 0 12px 10px 56px; }
 .job-details summary { width: fit-content; color: #89958b; font-size: 8px; cursor: pointer; }
@@ -226,6 +239,12 @@ button { color: inherit; }
 .toast.error { background: #7d3d35; }
 
 @keyframes pulse { 50% { opacity: .4; } }
+@keyframes playback-glow {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(209, 139, 71, 0); }
+  50% { transform: scale(1.08); box-shadow: 0 0 0 5px rgba(209, 139, 71, .12); }
+}
+@keyframes equalize { from { transform: scaleY(.45); } to { transform: scaleY(1); } }
+@keyframes download-progress { from { left: -34%; } to { left: 100%; } }
 
 @media (min-width: 1580px) {
   .main-content { padding-right: 64px; padding-left: 64px; }
@@ -324,6 +343,7 @@ button { color: inherit; }
   .job-copy strong { font-size: 8px; }
   .job-copy span { font-size: 7px; }
   .format-tag, .job-status { padding: 4px 5px; font-size: 6px; }
+  .job-progress { margin-right: 7px; margin-left: 42px; }
   .job-details { margin-left: 42px; }
   .refresh-button { padding: 6px; }
   .refresh-button span { display: none; }

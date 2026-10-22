@@ -5,6 +5,8 @@ const elements = {
   destinationLabel: document.getElementById('destinationLabel'),
   queuedCount: document.getElementById('queuedCount'),
   runningCount: document.getElementById('runningCount'),
+  runningStatCard: document.getElementById('runningStatCard'),
+  runningTrail: document.getElementById('runningTrail'),
   completedCount: document.getElementById('completedCount'),
   navPending: document.getElementById('navPending'),
   libraryCount: document.getElementById('libraryCount'),
@@ -237,16 +239,22 @@ function createElement(tag, className, text) {
 }
 
 function createJobEntry(job) {
-  const entry = createElement('article', 'job-entry');
+  const isRunning = job.status === 'running';
+  const entry = createElement('article', `job-entry${isRunning ? ' is-running' : ''}`);
   const row = createElement('div', 'job-row');
   const info = createElement('div', 'job-info');
   const cover = createElement('div', 'job-cover');
   cover.setAttribute('aria-hidden', 'true');
-  cover.innerHTML = '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>';
+  cover.innerHTML = isRunning
+    ? '<span class="download-equalizer"><i></i><i></i><i></i><i></i><i></i></span>'
+    : '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>';
   const copy = createElement('div', 'job-copy');
   const label = formatJobKind(job);
   copy.append(createElement('strong', '', label.title));
-  copy.append(createElement('span', '', label.detail));
+  const detail = isRunning
+    ? (job.kind === 'prepare' ? 'Preparando ferramentas…' : 'Baixando e organizando áudio…')
+    : label.detail;
+  copy.append(createElement('span', isRunning ? 'job-live-detail' : '', detail));
   info.append(cover, copy);
 
   const format = createElement('span', 'format-tag', job.kind === 'prepare' ? 'SETUP' : String(job.audio_format || 'mp3').toUpperCase());
@@ -255,6 +263,13 @@ function createJobEntry(job) {
   const date = createElement('span', 'job-date', timeForJob(job.created_at));
   row.append(info, format, status, date);
   entry.append(row);
+
+  if (isRunning) {
+    const progress = createElement('div', 'job-progress');
+    progress.setAttribute('aria-hidden', 'true');
+    progress.append(createElement('span', ''));
+    entry.append(progress);
+  }
 
   if (Array.isArray(job.logs) && job.logs.length) {
     const details = createElement('details', 'job-details');
@@ -273,6 +288,10 @@ function renderJobs(jobs) {
   const completed = downloads.filter((job) => job.status === 'completed').length;
   elements.queuedCount.textContent = String(queued);
   elements.runningCount.textContent = String(running);
+  elements.runningStatCard.classList.toggle('is-active', running > 0);
+  elements.runningTrail.textContent = running === 1
+    ? 'Baixando agora'
+    : running > 1 ? `${running} baixando` : 'Processando';
   elements.completedCount.textContent = String(completed);
   elements.navPending.textContent = String(queued + running);
   const completedSignature = downloads
